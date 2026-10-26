@@ -3,6 +3,8 @@ const http = require('http');
 const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
+const fs = require('fs');
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -16,6 +18,54 @@ app.use((req, res, next) => {
   res.set('Expires', '0');
   next();
 });
+
+// Case-insensitive file resolver middleware (Guarantees all assets load on Linux / Render)
+function findCaseInsensitiveFile(baseDir, relativePath) {
+  try {
+    const parts = relativePath.split(/[/\\]/).filter(Boolean);
+    let current = baseDir;
+    for (const part of parts) {
+      if (!fs.existsSync(current)) return null;
+      const stat = fs.statSync(current);
+      if (!stat.isDirectory()) return null;
+      const items = fs.readdirSync(current);
+      const exact = items.find(i => i === part);
+      if (exact) {
+        current = path.join(current, exact);
+      } else {
+        const match = items.find(i => i.toLowerCase() === part.toLowerCase());
+        if (match) {
+          current = path.join(current, match);
+        } else {
+          return null;
+        }
+      }
+    }
+    return current;
+  } catch (e) {
+    return null;
+  }
+}
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const reqPath = decodeURIComponent(req.path);
+  if (reqPath === '/' || reqPath === '') return next();
+
+  let resolved = findCaseInsensitiveFile(path.join(__dirname, 'public'), reqPath);
+  if (!resolved) {
+    resolved = findCaseInsensitiveFile(__dirname, reqPath);
+  }
+  if (resolved) {
+    try {
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+        return res.sendFile(resolved);
+      }
+    } catch (e) {}
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), { etag: false, maxAge: 0 }));
 app.use(express.static(__dirname, { etag: false, maxAge: 0 }));
 
