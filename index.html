@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>EBA Proje Geliştirme ve Fizik Modelleme Portalı</title>
+  <meta name="description" content="T.C. Milli Eğitim Bakanlığı Öğrenci Bilişim, 2D/3D Fizik Modelleme ve Bilgisayar Bilimleri Çalışma Portalı">
+  <meta name="keywords" content="eba, meb, egitim, fizik modelleme, 2d simulasyon, odev, matematik, ders notlari, bilgisayar bilimi">
+  <meta name="author" content="MEB Bilişim">
+  <link rel="icon" id="site-favicon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎓</text></svg>">
+  <link rel="stylesheet" href="style.css?v=3.0">
+</head>
+<body>
+  <!-- Full Game Canvas Viewport -->
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Top In-Game HUD (Only shown during active match) -->
+    <div id="top-hud" class="hidden">
+      <!-- Total Tasks Bar -->
+      <div id="task-bar-container">
+        <span class="task-bar-label">TOPLAM TAMAMLANAN GÖREVLER</span>
+        <div class="task-bar-outer">
+          <div id="task-bar-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <!-- Current Tasks List -->
+      <div id="tasks-list">
+        <div class="task-title">Görevler:</div>
+        <div class="task-item" id="task-item-wiring">• Elektrik: Kabloları Tamir Et</div>
+        <div class="task-item" id="task-item-card">• Admin: Kartı Okut</div>
+        <div class="task-item" id="task-item-storage">• Depo: Yakıt Bidonunu Doldur</div>
+        <div class="task-item" id="task-item-engine">• Alt Motor: Motorları Doldur</div>
+        <div class="task-item" id="task-item-cafeteria">• Kafeterya: Yemek Tepsisini Hazırla</div>
+      </div>
+
+      <!-- Room & Role Info -->
+      <div id="room-badge">
+        <span id="role-display" class="role-crewmate">CREWMATE</span>
+        <span id="room-code-tag">CODE: ----</span>
+      </div>
+    </div>
+
+    <!-- Top Right Controls -->
+    <div id="top-right-hud" class="hidden">
+      <button id="btn-school-disguise" class="hud-icon-btn" onclick="window.toggleSchoolDisguise()" title="EBA / MEB Kamuflajı (F9)" style="font-size: 13px; width: auto; padding: 0 12px; gap: 4px; border-radius: 20px; font-weight: bold; background: rgba(225, 29, 72, 0.9); color: #fff; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.4);">🎓 EBA (F9)</button>
+      <button id="btn-minimap" class="hud-icon-btn" title="Map (M)">
+        <img src="assets/Images/UI/map_button.png" alt="Map">
+      </button>
+      <button id="btn-sound-toggle" class="hud-icon-btn" title="Toggle Sound">🔊</button>
+    </div>
+
+    <!-- Bottom Action Buttons (Kill, Vent, Use, Report) -->
+    <!-- Bottom Action Buttons (Kill, Sabotage, Vent, Use, Report) -->
+    <div id="action-hud" class="hidden">
+      <button id="btn-report" class="action-btn report-btn disabled" title="Report Dead Body (R)">
+        <img src="assets/Images/UI/emergency_icon.png" alt="Report">
+        <span class="btn-label">REPORT</span>
+      </button>
+
+      <button id="btn-use" class="action-btn use-btn disabled" title="Use / Task (Space / E)">
+        <div class="use-icon-circle">USE</div>
+        <span class="btn-label">USE</span>
+      </button>
+
+      <button id="btn-sabotage" class="action-btn sabotage-btn hidden" title="Sabotage Map (Tab / Shift)">
+        <img src="assets/Images/UI/sabotage_icon.png" alt="Sabotage">
+        <span class="btn-label">SABOTAGE</span>
+      </button>
+
+      <button id="btn-vent" class="action-btn vent-btn hidden" title="Vent (V)">
+        <div class="vent-icon-circle">VENT</div>
+        <span class="btn-label">VENT</span>
+      </button>
+
+      <button id="btn-kill" class="action-btn kill-btn hidden disabled" title="Kill Crewmate (Q)">
+        <img src="assets/Images/UI/kill_icon.png" alt="Kill">
+        <span id="kill-timer-overlay" class="kill-cooldown-text">15</span>
+        <span class="btn-label">KILL</span>
+      </button>
+    </div>
+
+    <!-- Interaction Prompts ("PRESS E OR SPACE TO USE") -->
+    <div id="interact-prompt" class="hidden">
+      <span class="key-badge">E</span> <span id="prompt-text">USE TASK</span>
+    </div>
+  </div>
+
+  <!-- ================= 1. AUTHENTIC AMONG US TITLE & MAIN MENU (3. FOTOĞRAFIN BİREBİR AYNISI) ================= -->
+  <div id="main-menu-modal" class="main-menu-fullscreen">
+    <!-- EBA Disguise Quick Button in Menu -->
+    <div style="position: absolute; top: 18px; right: 20px; z-index: 100;">
+      <button onclick="window.toggleSchoolDisguise()" title="EBA / MEB Kamuflajı (F9)" style="display: flex; align-items: center; gap: 8px; background: rgba(225, 29, 72, 0.9); color: #fff; border: 1px solid rgba(255,255,255,0.4); border-radius: 20px; padding: 7px 16px; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.4); transition: transform 0.15s;">
+        <span style="font-size: 16px;">🎓</span> <span>EBA KAMUFLAJI (F9)</span>
+      </button>
+    </div>
+
+    <div class="main-menu-content">
+      <!-- Title Logo (Assets/Images/Menu/title.png) -->
+      <img src="assets/Images/Menu/title.png" class="menu-title-img" alt="Among Us">
+
+      <!-- Vertical Button Column (Fotoğraftaki Birebir Menü) -->
+      <div class="menu-buttons-column" id="menu-primary-nav">
+        <button id="btn-menu-freeplay" class="menu-capsule-btn">
+          <img src="assets/Images/Menu/sel.png" class="menu-sel-icon" alt="">
+          <img src="assets/Images/Menu/freeplay.png" class="btn-text-img" alt="Freeplay">
+        </button>
+
+        <button id="btn-menu-online" class="menu-capsule-btn">
+          <img src="assets/Images/Menu/sel.png" class="menu-sel-icon" alt="">
+          <span class="btn-capsule-text">ONLINE</span>
+        </button>
+
+        <button id="btn-menu-help" class="menu-capsule-btn">
+          <img src="assets/Images/Menu/sel.png" class="menu-sel-icon" alt="">
+          <img src="assets/Images/Menu/help.png" class="btn-text-img" alt="How to Play">
+        </button>
+
+        <button id="btn-menu-credits" class="menu-capsule-btn">
+          <img src="assets/Images/Menu/sel.png" class="menu-sel-icon" alt="">
+          <img src="assets/Images/Menu/credits.png" class="btn-text-img" alt="Credits">
+        </button>
+
+        <button id="btn-menu-quit" class="menu-capsule-btn">
+          <img src="assets/Images/Menu/sel.png" class="menu-sel-icon" alt="">
+          <img src="assets/Images/Menu/quit.png" class="btn-text-img" alt="Quit">
+        </button>
+      </div>
+
+      <!-- Online Submenu Panel (Host / Public / Private) -->
+      <div id="menu-online-nav" class="menu-online-panel hidden">
+        <div class="online-name-row">
+          <span class="online-label">PLAYER NAME:</span>
+          <input type="text" id="player-name-input" maxlength="12" value="" placeholder="İsminizi Yazın..." class="online-name-input">
+        </div>
+
+        <div class="online-actions-grid">
+          <button id="btn-host-game" class="online-action-btn host-btn">
+            <span class="action-title">HOST</span>
+            <span class="action-desc">Create Room</span>
+          </button>
+          <button id="btn-find-game" class="online-action-btn public-btn">
+            <span class="action-title">PUBLIC</span>
+            <span class="action-desc">Find Match</span>
+          </button>
+          <button id="btn-enter-code" class="online-action-btn private-btn">
+            <span class="action-title">PRIVATE</span>
+            <span class="action-desc">Enter Code</span>
+          </button>
+        </div>
+
+        <button id="btn-online-back" class="btn-return-capsule">
+          <img src="assets/Images/Menu/return.png" alt="Return">
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Host Game Setup Modal (Oda Kurma Ayarları & Soruları) -->
+  <div id="create-room-modal" class="modal-overlay hidden">
+    <div class="settings-dialog-card host-setup-card">
+      <div class="settings-header">
+        <h2>HOST - CREATE GAME</h2>
+        <button class="btn-close-task" id="btn-close-create-room">✕</button>
+      </div>
+      <div class="settings-list-scroll">
+        <div class="setting-item">
+          <span>Map</span>
+          <b style="color: #38bdf8;">THE SKELD</b>
+        </div>
+        <div class="setting-item">
+          <span># Impostors</span>
+          <div class="choice-pills" id="host-impostor-pills">
+            <button class="choice-pill active" data-imp="1">1</button>
+            <button class="choice-pill" data-imp="2">2</button>
+            <button class="choice-pill" data-imp="3">3</button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <span>Max Players</span>
+          <select id="create-max-players" class="setting-select">
+            <option value="4">4 Players</option>
+            <option value="5">5 Players</option>
+            <option value="6">6 Players</option>
+            <option value="7">7 Players</option>
+            <option value="8">8 Players</option>
+            <option value="9">9 Players</option>
+            <option value="10">10 Players</option>
+            <option value="11">11 Players</option>
+            <option value="12">12 Players</option>
+            <option value="13">13 Players</option>
+            <option value="14">14 Players</option>
+            <option value="15">15 Players</option>
+            <option value="16">16 Players</option>
+            <option value="17">17 Players</option>
+            <option value="18">18 Players</option>
+            <option value="19">19 Players</option>
+            <option value="20" selected>20 Players</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Chat Type</span>
+          <span style="color: #94a3b8; font-weight: bold;">Free Chat / Quick</span>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="btn-confirm-create-room" class="btn-primary">CONFIRM</button>
+        <button id="btn-cancel-create-room" class="btn-secondary">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help / How To Play Modal (Slides 1-9) -->
+  <div id="help-modal" class="modal-overlay hidden">
+    <div class="help-card">
+      <div class="help-header">
+        <span>HOW TO PLAY (<span id="help-slide-num">1</span>/9)</span>
+        <button class="btn-close-task" id="btn-close-help">✕</button>
+      </div>
+      <div class="help-slide-box">
+        <img id="help-slide-img" src="assets/Images/help/help1.png" alt="Help Slide">
+      </div>
+      <div class="help-footer-nav">
+        <button id="btn-help-prev" class="btn-secondary">◀ PREV</button>
+        <button id="btn-help-next" class="btn-primary">NEXT ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credits Modal -->
+  <div id="credits-modal" class="modal-overlay hidden">
+    <div class="credits-card">
+      <div class="help-header">
+        <span>CREDITS</span>
+        <button class="btn-close-task" id="btn-close-credits">✕</button>
+      </div>
+      <img src="assets/Images/credits/credits.png" class="credits-img" alt="Credits">
+    </div>
+  </div>
+
+  <!-- Game Settings Modal (EDIT / VIEW) -->
+  <div id="game-settings-modal" class="modal-overlay hidden">
+    <div class="settings-dialog-card">
+      <div class="settings-header">
+        <h2>GAME SETTINGS (<span id="settings-mode-label">EDIT</span>)</h2>
+        <button class="btn-close-task" id="btn-close-settings">✕</button>
+      </div>
+      <div class="settings-list-scroll">
+        <div class="setting-item">
+          <span>Map</span>
+          <b>THE SKELD</b>
+        </div>
+        <div class="setting-item">
+          <span># Impostors</span>
+          <select id="setting-impostors" class="setting-select">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Player Speed</span>
+          <select id="setting-speed" class="setting-select">
+            <option value="1.0">1.0x</option>
+            <option value="1.25" selected>1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2.0">2.0x</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Kill Cooldown</span>
+          <select id="setting-kill-cd" class="setting-select">
+            <option value="10">10s</option>
+            <option value="15">15s</option>
+            <option value="25" selected>25s</option>
+            <option value="35">35s</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Emergency Meetings</span>
+          <select id="setting-meetings" class="setting-select">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Discussion / Voting Time</span>
+          <select id="setting-voting-time" class="setting-select">
+            <option value="30">30s</option>
+            <option value="60" selected>60s</option>
+            <option value="90">90s</option>
+            <option value="120">120s</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Visual Tasks</span>
+          <select id="setting-visual-tasks" class="setting-select">
+            <option value="true" selected>ON</option>
+            <option value="false">OFF</option>
+          </select>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="btn-apply-settings" class="btn-primary">APPLY SETTINGS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enter Private Room Code Modal -->
+  <div id="enter-code-modal" class="modal-overlay hidden">
+    <div class="dialog-card">
+      <h2>ENTER ROOM CODE</h2>
+      <p>Ask the host for their 6-character room code:</p>
+      <input type="text" id="room-code-input" class="code-input" maxlength="6" placeholder="KAFE67">
+      <div class="dialog-actions">
+        <button id="btn-submit-code" class="btn-primary">JOIN ROOM</button>
+        <button id="btn-cancel-code" class="btn-secondary">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Public Rooms List Modal -->
+  <div id="public-rooms-modal" class="modal-overlay hidden">
+    <div class="dialog-card wide">
+      <div class="dialog-header">
+        <h2>PUBLIC ROOMS</h2>
+        <button id="btn-refresh-rooms" class="btn-secondary">🔄 Refresh</button>
+      </div>
+      <div id="public-rooms-list" class="rooms-list-container">
+        <div class="no-rooms-msg">No active rooms found. Host a game or play Freeplay!</div>
+      </div>
+      <div class="dialog-actions">
+        <button id="btn-close-rooms" class="btn-secondary">BACK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 2. AUTHENTIC DROPSHIP LOBBY HUD (1. FOTOĞRAFIN BİREBİR AYNISI) ================= -->
+  <div id="dropship-hud" class="hidden">
+    <!-- Top Right Nav Buttons -->
+    <div class="dropship-top-nav">
+      <button id="btn-dropship-chat" class="dropship-icon-btn" title="Chat">
+        <span>💬</span>
+        <span id="dropship-chat-badge" class="nav-badge hidden">1</span>
+      </button>
+      <button id="btn-dropship-settings" class="dropship-icon-btn" title="Settings">⚙️</button>
+      <button id="btn-dropship-leave" class="dropship-icon-btn" title="Leave Room">🚪</button>
+    </div>
+
+    <!-- Right Side Room Settings Tablet Panel -->
+    <div class="dropship-tablet">
+      <div class="tablet-sec-code">
+        <span class="tablet-sec-title">ROOM CODE</span>
+        <div class="tablet-code-row">
+          <b id="dropship-room-code">OMBOFG</b>
+          <button id="btn-dropship-copy" class="btn-copy-code" title="Copy Code">📋</button>
+        </div>
+      </div>
+
+      <div class="tablet-sec-map">
+        <span class="tablet-sec-title">ROOM SETTINGS</span>
+        <div class="skeld-badge">
+          <img src="assets/Images/UI/map_button.png" class="skeld-logo" alt="The Skeld">
+          <span>THE SKELD</span>
+        </div>
+      </div>
+
+      <div class="tablet-grid-info">
+        <div class="tablet-row">
+          <span class="row-label">CAPACITY</span>
+          <div class="row-val-badge">
+            <span class="astronaut-icon">👨‍🚀</span>
+            <b id="dropship-player-count">1/20</b>
+          </div>
+        </div>
+        <div class="tablet-row">
+          <span class="row-label">PRESET</span>
+          <span class="row-val-text">CUSTOM</span>
+        </div>
+        <div class="tablet-row">
+          <span class="row-label">PRIVACY</span>
+          <button id="btn-dropship-privacy" class="badge-privacy public">PUBLIC</button>
+        </div>
+      </div>
+
+      <div class="tablet-sec-settings">
+        <span class="tablet-sec-title">GAME SETTINGS</span>
+        <div class="tablet-settings-btns">
+          <button id="btn-settings-edit" class="btn-cyan-pill">EDIT</button>
+          <button id="btn-settings-view" class="btn-cyan-pill">VIEW</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Center Host Start Bar -->
+    <div class="dropship-bottom-bar">
+      <div id="dropship-host-tag" class="dropship-host-tag">HOST: <span id="dropship-host-name">Player</span> (You!)</div>
+      <button id="btn-dropship-start" class="btn-start-giant">START</button>
+      <div id="dropship-guest-msg" class="dropship-guest-msg hidden">Waiting for host to start...</div>
+      <div class="dropship-ping-display">PING: <span id="dropship-ping-val">42</span> ms</div>
+    </div>
+
+    <!-- Bottom Right Customize Laptop Button -->
+    <div class="dropship-action-hud">
+      <button id="btn-dropship-customize" class="action-btn customize-btn" title="Customize (Space / E)">
+        <div class="customize-icon-circle">💻</div>
+        <span class="btn-label">USE</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Customization Closet Modal (Laptop interaction - Colors, Hats, Skins) -->
+  <div id="customize-modal" class="modal-overlay hidden">
+    <div class="customize-card">
+      <div class="customize-header">
+        <h2>CUSTOMIZE ASTRONAUT</h2>
+        <button class="btn-close-task" id="btn-close-customize">✕</button>
+      </div>
+      <div class="customize-preview-box">
+        <div id="customize-avatar-preview" class="avatar-preview-stage"></div>
+      </div>
+      <div class="customize-tabs">
+        <button id="tab-cust-color" class="customize-tab active">COLOR</button>
+        <button id="tab-cust-hat" class="customize-tab">HAT</button>
+        <button id="tab-cust-skin" class="customize-tab">SKIN</button>
+      </div>
+      <div id="customize-color-grid" class="customize-items-grid"></div>
+      <div id="customize-hat-grid" class="customize-items-grid hidden"></div>
+      <div id="customize-skin-grid" class="customize-items-grid hidden"></div>
+    </div>
+  </div>
+
+  <!-- ================= 3. SHHHH & ROLE REVEAL SCREEN ================= -->
+  <div id="role-reveal-modal" class="modal-overlay hidden">
+    <div class="role-reveal-box">
+      <div class="shhh-container" id="shhh-screen">
+        <img src="assets/Images/Meeting/shhhhhhh.png" class="shh-splash-img" alt="SHHHHHHH">
+      </div>
+      <div class="reveal-content-container hidden" id="reveal-content">
+        <h1 id="reveal-role-title" class="reveal-crew">CREWMATE</h1>
+        <p id="reveal-role-desc">There is 1 Impostor among us.</p>
+        <div class="reveal-stage-container">
+          <canvas id="reveal-canvas" width="960" height="360"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Universal Crew Chat Drawer (Active in Dropship Lobby & Emergency Meetings) -->
+  <div id="meeting-chat-drawer" class="meeting-chat-drawer hidden">
+    <div class="chat-drawer-header">
+      <span class="chat-header-title">💬 CREW CHAT</span>
+      <button id="btn-close-chat" class="btn-close-chat" title="Close Chat">✕</button>
+    </div>
+    <div id="chat-messages" class="chat-messages">
+      <div class="chat-system-msg">Welcome to room chat! Say hi to your crewmates.</div>
+    </div>
+    <div class="chat-input-bar">
+      <input type="text" id="chat-input" placeholder="Type message..." maxlength="100">
+      <button id="btn-send-chat">SEND</button>
+    </div>
+  </div>
+
+  <!-- ================= 4. EMERGENCY MEETING TABLET (Photo 2 Restoration) ================= -->
+  <!-- Photo 5: Dead Body Reported / Emergency Meeting Splash Modal -->
+  <div id="report-splash-modal" class="modal-overlay hidden" style="z-index: 9999; background: #000; display: none; align-items: center; justify-content: center;">
+    <img id="report-splash-img" src="" alt="Alert" style="width: 100%; max-width: 1200px; height: auto; max-height: 90vh; object-fit: contain;">
+  </div>
+
+  <div id="meeting-modal" class="modal-overlay hidden">
+    <!-- Big Orange Rugged Tablet Frame -->
+    <div class="meeting-tablet-frame">
+      <!-- Tablet Camera / Notch -->
+      <div class="tablet-notch"></div>
+
+      <!-- Top Orange Bar -->
+      <div class="tablet-top-bar">
+        <!-- Total Tasks Bar inside Tablet -->
+        <div class="meeting-tasks-container">
+          <div class="meeting-tasks-outer">
+            <div id="meeting-task-fill" style="width: 0%;"></div>
+            <span class="meeting-tasks-text">TOPLAM TAMAMLANAN GÖREVLER</span>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div class="meeting-screen-title" id="meeting-title-text">Who Is The Impostor?</div>
+
+        <!-- Right Side Tablet Buttons (Notes, Chat, Settings, Map) -->
+        <div class="tablet-action-icons">
+          <button id="btn-tablet-chat" class="tablet-icon-btn" title="Crew Chat">
+            <img src="assets/Images/Meeting/chat.png" alt="Chat">
+            <span id="chat-notification-badge" class="chat-badge hidden">1</span>
+          </button>
+          <button id="btn-tablet-minimap" class="tablet-icon-btn" title="Map">
+            <img src="assets/Images/UI/map_button.png" alt="Map">
+          </button>
+        </div>
+      </div>
+
+      <!-- Tablet Screen Body -->
+      <div class="tablet-screen-body">
+        <!-- 3-Column Voting Grid (Full Screen Width restored!) -->
+        <div id="voting-grid" class="voting-grid-3col">
+          <!-- Injected vote cards -->
+        </div>
+      </div>
+
+      <!-- Tablet Bottom Bar -->
+      <div class="tablet-bottom-bar">
+        <button id="btn-skip-vote" class="btn-tablet-skip">
+          <img src="assets/Images/Meeting/skip_vote.png" alt="Skip">
+          <span>SKIP VOTE</span>
+          <div class="card-voted-tokens" id="tokens-skip" style="position:static; margin-left:8px;"></div>
+        </button>
+
+        <div class="voting-timer-display">
+          <span>Voting Ends In: </span>
+          <b id="meeting-timer-num">60s</b>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 5. EJECTION ANIMATION (3. FOTOĞRAFIN DOĞRU HALİ - GERÇEK ASTRONOT) ================= -->
+  <div id="ejection-modal" class="modal-overlay hidden">
+    <div class="space-stars-bg"></div>
+    <!-- Real Rotating / Tumbling Astronaut Sprite -->
+    <div id="ejected-astronaut-wrapper" class="ejected-astronaut-wrapper">
+      <img id="ejected-astronaut-img" class="ejected-astronaut-img" src="" alt="Astronaut">
+    </div>
+    <div id="ejection-text" class="ejection-text"></div>
+  </div>
+
+  <!-- Victory / Game Over Overlay -->
+  <div id="gameover-modal" class="modal-overlay hidden">
+    <div class="gameover-card">
+      <h1 id="gameover-title" class="gameover-crew">VICTORY</h1>
+      <p id="gameover-desc">Crewmates win!</p>
+      <div class="gameover-actions" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+        <button id="btn-play-again" class="btn-primary" style="font-size: 1.05rem; padding: 12px 20px; background: #22c55e;">TEKRAR OYNA (LOBİYE DÖN)</button>
+        <button id="btn-leave-room" class="btn-secondary" style="font-size: 0.95rem; padding: 10px 20px; background: #475569; color: #fff;">ODADAN AYRIL (ANA MENÜ)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 1: Fix Wiring -->
+  <div id="task-modal-wiring" class="modal-overlay hidden">
+    <div class="task-window wiring-window">
+      <div class="task-window-header">
+        <span>ELECTRICAL: FIX WIRING</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="wiring-board" id="wiring-board">
+        <div class="wiring-left-column" id="wiring-left-pins"></div>
+        <canvas id="wiring-canvas" width="460" height="340"></canvas>
+        <div class="wiring-right-column" id="wiring-right-pins"></div>
+      </div>
+      <div class="task-footer">
+        <span>Connect matching colors from Left to Right</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 2: Swipe Card -->
+  <div id="task-modal-card" class="modal-overlay hidden">
+    <div class="task-window card-window">
+      <div class="task-window-header">
+        <span>ADMIN: SWIPE CARD</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="card-machine">
+        <div class="card-wallet" id="card-wallet">
+          <img src="assets/Images/Tasks/Swipe Card/admin_Wallet.png" class="wallet-bg" alt="Wallet">
+          <img src="assets/Images/Tasks/Swipe Card/admin_Card.png" id="swipe-card-item" class="card-item" alt="Card">
+          <img src="assets/Images/Tasks/Swipe Card/admin_walletFront.png" class="wallet-front" alt="Wallet Front">
+        </div>
+        <div class="card-slot-zone" id="card-slot-zone">
+          <div class="card-slider-top"></div>
+          <div id="card-slot-track" class="slot-track">
+            <span id="card-status-message">PLEASE SWIPE CARD</span>
+          </div>
+          <div class="card-slider-bottom"></div>
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Take card from wallet and swipe through scanner at steady speed</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 3: Clear Asteroids -->
+  <div id="task-modal-asteroids" class="modal-overlay hidden">
+    <div class="task-window asteroids-window">
+      <div class="task-window-header">
+        <span>WEAPONS: CLEAR ASTEROIDS (<span id="asteroids-count-num">0</span>/15)</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="asteroids-screen-box">
+        <canvas id="asteroids-canvas" width="600" height="380"></canvas>
+      </div>
+      <div class="task-footer">
+        <span>Aim and click to destroy 15 incoming asteroids!</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 4: Download Data -->
+  <div id="task-modal-download" class="modal-overlay hidden">
+    <div class="task-window download-window">
+      <div class="task-window-header">
+        <span>CAFETERIA: DOWNLOAD DATA</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="download-tablet-screen">
+        <div class="download-folders">
+          <div class="folder-icon">📁 The Skeld Server</div>
+          <div class="arrow-down">⬇️</div>
+          <div class="folder-icon">💾 Personal Tablet</div>
+        </div>
+        <div class="download-progress-box">
+          <div class="download-bar-track">
+            <div id="download-bar-fill" class="download-bar-fill"></div>
+          </div>
+          <div id="download-status-text" class="download-status-text">Estimated Time: 8s</div>
+        </div>
+        <button id="btn-start-download" class="btn-download-action">DOWNLOAD</button>
+      </div>
+      <div class="task-footer">
+        <span>Click Download and wait until all files are transferred</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 5: Divert Power (Fotoğraf 3 - Orijinal Among Us) -->
+  <div id="task-modal-divert" class="modal-overlay hidden">
+    <div class="task-window divert-window-authentic" style="width: 500px; background: transparent; border: none; box-shadow: none;">
+      <div class="task-window-header" style="background: rgba(15, 23, 42, 0.95); border-radius: 12px 12px 0 0;">
+        <span>ELECTRICAL: DIVERT POWER</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="divert-board-stage" style="position: relative; width: 500px; height: 500px; margin: 0 auto; background: url('assets/Images/Tasks/Divert%20Power/electricity_Divert_Base.png') no-repeat center; background-size: contain;">
+        <!-- Left Gauge Level -->
+        <div class="divert-left-gauge" style="position: absolute; left: 88px; top: 122px; width: 56px; height: 260px; background: rgba(0,0,0,0.6); border-radius: 4px; overflow: hidden; display: flex; flex-direction: column-reverse;">
+          <div id="divert-gauge-bar" style="width: 100%; height: 20%; background: linear-gradient(to top, #ef4444, #eab308, #22c55e); transition: height 0.2s ease-out;"></div>
+        </div>
+
+        <!-- Right Switch Slider -->
+        <div id="divert-switch-track" style="position: absolute; right: 88px; top: 122px; width: 56px; height: 260px; cursor: pointer;">
+          <div id="divert-slider-thumb" style="position: absolute; left: 2px; bottom: 8px; width: 52px; height: 48px; background: #ea580c; border: 2px solid #fdba74; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; font-size: 18px; cursor: grab; user-select: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: bottom 0.05s ease-out;">
+            ▲
+          </div>
+        </div>
+      </div>
+      <div class="task-footer" style="background: rgba(15, 23, 42, 0.95); border-radius: 0 0 12px 12px;">
+        <span>Pull the flashing orange breaker switch all the way UP to route auxiliary power</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 6: Fuel Engines (Authentic Among Us) -->
+  <div id="task-modal-fuel" class="modal-overlay hidden">
+    <div class="task-window fuel-window-authentic" style="width: 520px; background: transparent; border: none; box-shadow: none;">
+      <div class="task-window-header" style="background: rgba(15, 23, 42, 0.95); border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 18px;">
+        <span id="fuel-task-title" style="font-weight: 800; color: #facc15; font-size: 17px; letter-spacing: 1px;">ENGINES: FUEL ENGINES</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="fuel-board-stage" style="position: relative; width: 520px; height: 440px; margin: 0 auto; background: url('assets/Images/Tasks/Fuel%20Engines/fuel_engines_base.png') no-repeat center; background-size: contain; background-color: #1a2233; border: 4px solid #334155; border-top: none; border-radius: 0 0 12px 12px; overflow: hidden; display: flex; align-items: center; justify-content: space-around;">
+        
+        <!-- Gas Canister & Fluid Level -->
+        <div style="position: relative; width: 180px; height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <img src="assets/Images/Tasks/Fuel%20Engines/gas_can.png" alt="Gas Canister" style="position: absolute; width: 156px; height: auto; z-index: 2; pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.6));">
+          <!-- Fluid fill container -->
+          <div style="position: absolute; bottom: 54px; width: 108px; height: 165px; background: rgba(0,0,0,0.55); border-radius: 8px; overflow: hidden; z-index: 1; border: 2px solid rgba(255,255,255,0.18);">
+            <div id="fuel-liquid-bar" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: linear-gradient(to top, #ea580c, #f59e0b, #facc15); box-shadow: 0 0 16px rgba(245,158,11,0.85); transition: height 0.08s linear;">
+              <div style="position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: #fef08a; opacity: 0.95;"></div>
+            </div>
+          </div>
+          <!-- Percentage Indicator -->
+          <div id="fuel-pct-text" style="position: absolute; top: 18px; font-family: monospace; font-size: 22px; font-weight: 900; color: #facc15; text-shadow: 0 0 10px #f59e0b; z-index: 3;">0%</div>
+        </div>
+
+        <!-- Right Side: Refuel Controls -->
+        <div style="position: relative; width: 220px; height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
+          <!-- Status Lamp -->
+          <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.45); padding: 6px 14px; border-radius: 20px; border: 1px solid #475569;">
+            <div id="fuel-status-lamp" style="width: 18px; height: 18px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 12px #ef4444; border: 2px solid #fff;"></div>
+            <span id="fuel-status-label" style="font-family: monospace; font-size: 14px; font-weight: 800; color: #f87171;">STANDBY</span>
+          </div>
+
+          <!-- Big Refuel Push Button -->
+          <div id="btn-fuel-holder" style="position: relative; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, #475569, #1e293b); border: 5px solid #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; box-shadow: 0 8px 25px rgba(0,0,0,0.7), inset 0 3px 6px rgba(255,255,255,0.3); transition: transform 0.08s ease, box-shadow 0.08s ease;">
+            <img id="img-fuel-btn" src="assets/Images/Tasks/Fuel%20Engines/engineFuel_Button.png" alt="Fuel Button" style="width: 74px; height: 74px; pointer-events: none; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">
+          </div>
+
+          <!-- Prompt -->
+          <div id="fuel-action-hint" style="text-align: center; color: #94a3b8; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+            BASILI TUT / HOLD
+          </div>
+        </div>
+
+      </div>
+      <div class="task-footer" style="background: rgba(15, 23, 42, 0.95); border-radius: 0 0 12px 12px; padding: 10px 18px; text-align: center; color: #cbd5e1; font-size: 13px;">
+        <span>Press and hold the button until the fuel canister is filled to 100%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Impostor Sabotage Map Modal -->
+  <div id="sabotage-modal" class="modal-overlay hidden">
+    <div class="sabotage-window">
+      <div class="sabotage-window-header">
+        <span>SABOTAGE - THE SKELD</span>
+        <span id="sabotage-cooldown-tag" class="sab-cd-tag">READY</span>
+        <button class="btn-close-task" onclick="window.closeSabotage()">✕</button>
+      </div>
+      <div class="sabotage-map-stage">
+        <img src="assets/Maps/mini_map.PNG" class="sabotage-map-bg" alt="Sabotage Map">
+        
+        <!-- System Sabotages (Crises) -->
+        <button class="sab-action-icon reactor-sab" title="Reactor Meltdown" data-sab="reactor">
+          <span class="sab-icon-symbol">☢</span>
+          <span class="sab-icon-label">REACTOR</span>
+        </button>
+
+        <button class="sab-action-icon lights-sab" title="Sabotage Lights (Electrical)" data-sab="lights">
+          <span class="sab-icon-symbol">⚡</span>
+          <span class="sab-icon-label">LIGHTS</span>
+        </button>
+
+        <button class="sab-action-icon o2-sab" title="Oxygen Depletion" data-sab="o2">
+          <span class="sab-icon-symbol">💨</span>
+          <span class="sab-icon-label">O2</span>
+        </button>
+
+        <button class="sab-action-icon comms-sab" title="Communications Jammed" data-sab="comms">
+          <span class="sab-icon-symbol">📡</span>
+          <span class="sab-icon-label">COMMS</span>
+        </button>
+
+        <!-- Room Door Lockdown Buttons (X) -->
+        <button class="sab-door-btn door-cafeteria" title="Lock Cafeteria Doors" data-door="cafeteria">✕</button>
+        <button class="sab-door-btn door-medbay" title="Lock Medbay Doors" data-door="medbay">✕</button>
+        <button class="sab-door-btn door-upengine" title="Lock Upper Engine Doors" data-door="upengine">✕</button>
+        <button class="sab-door-btn door-lowengine" title="Lock Lower Engine Doors" data-door="lowengine">✕</button>
+        <button class="sab-door-btn door-security" title="Lock Security Doors" data-door="security">✕</button>
+        <button class="sab-door-btn door-electrical" title="Lock Electrical Doors" data-door="electrical">✕</button>
+        <button class="sab-door-btn door-storage" title="Lock Storage Doors" data-door="storage">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 7: Prepare Cafeteria Meal Tray (New Unique Cafeteria Task!) -->
+  <div id="task-modal-meal" class="modal-overlay hidden">
+    <div class="task-window" style="width: 560px; background: #0f172a; border: 4px solid #f59e0b; border-radius: 16px; box-shadow: 0 15px 45px rgba(0,0,0,0.85); overflow: hidden;">
+      <div class="task-window-header" style="background: #1e293b; color: #fbbf24; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 800; font-size: 16px; letter-spacing: 1px;">KAFETERYA: YEMEK TEPSİSİNİ HAZIRLA</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+
+      <div style="padding: 24px; background: #020617; display: flex; flex-direction: column; align-items: center; gap: 20px;">
+        <!-- Food item shelf / counter -->
+        <div style="width: 100%; background: #1e293b; border-radius: 12px; padding: 12px 16px; border: 2px dashed #475569; display: flex; justify-content: space-around; align-items: center;">
+          <div class="meal-food-item" id="food-pizza" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; font-size: 34px; padding: 8px 14px; background: rgba(255,255,255,0.06); border-radius: 10px; transition: transform 0.15s, background 0.15s;" title="Pizza Dilimi">
+            <span>🍕</span>
+            <span style="font-size: 11px; font-weight: bold; color: #fde047; margin-top: 4px;">Pizza</span>
+          </div>
+          <div class="meal-food-item" id="food-burger" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; font-size: 34px; padding: 8px 14px; background: rgba(255,255,255,0.06); border-radius: 10px; transition: transform 0.15s, background 0.15s;" title="Hamburger">
+            <span>🍔</span>
+            <span style="font-size: 11px; font-weight: bold; color: #fde047; margin-top: 4px;">Burger</span>
+          </div>
+          <div class="meal-food-item" id="food-drink" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; font-size: 34px; padding: 8px 14px; background: rgba(255,255,255,0.06); border-radius: 10px; transition: transform 0.15s, background 0.15s;" title="İçecek">
+            <span>🥤</span>
+            <span style="font-size: 11px; font-weight: bold; color: #fde047; margin-top: 4px;">İçecek</span>
+          </div>
+          <div class="meal-food-item" id="food-apple" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; font-size: 34px; padding: 8px 14px; background: rgba(255,255,255,0.06); border-radius: 10px; transition: transform 0.15s, background 0.15s;" title="Elma">
+            <span>🍎</span>
+            <span style="font-size: 11px; font-weight: bold; color: #fde047; margin-top: 4px;">Meyve</span>
+          </div>
+        </div>
+
+        <!-- Cafeteria Serving Tray -->
+        <div id="meal-tray-container" style="position: relative; width: 100%; height: 160px; background: #334155; border: 6px solid #475569; border-radius: 18px; box-shadow: inset 0 4px 15px rgba(0,0,0,0.6); display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; padding: 14px; align-items: center;">
+          <div class="tray-slot" id="slot-pizza" data-target="pizza" style="height: 100%; border: 2px dashed #94a3b8; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.25); cursor: pointer;">
+            <span class="slot-placeholder" style="font-size: 26px; opacity: 0.35;">🍕</span>
+            <span class="slot-label" style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Pizza Koy</span>
+          </div>
+          <div class="tray-slot" id="slot-burger" data-target="burger" style="height: 100%; border: 2px dashed #94a3b8; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.25); cursor: pointer;">
+            <span class="slot-placeholder" style="font-size: 26px; opacity: 0.35;">🍔</span>
+            <span class="slot-label" style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Burger Koy</span>
+          </div>
+          <div class="tray-slot" id="slot-drink" data-target="drink" style="height: 100%; border: 2px dashed #94a3b8; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.25); cursor: pointer;">
+            <span class="slot-placeholder" style="font-size: 26px; opacity: 0.35;">🥤</span>
+            <span class="slot-label" style="font-size: 11px; color: #94a3b8; margin-top: 4px;">İçecek Koy</span>
+          </div>
+          <div class="tray-slot" id="slot-apple" data-target="apple" style="height: 100%; border: 2px dashed #94a3b8; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.25); cursor: pointer;">
+            <span class="slot-placeholder" style="font-size: 26px; opacity: 0.35;">🍎</span>
+            <span class="slot-label" style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Meyve Koy</span>
+          </div>
+
+          <!-- Completed Stamp Banner -->
+          <div id="meal-served-banner" class="hidden" style="position: absolute; inset: 0; background: rgba(15, 23, 42, 0.92); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10;">
+            <div style="font-size: 28px; font-weight: 900; color: #22c55e; letter-spacing: 2px; text-shadow: 0 0 15px rgba(34,197,94,0.6);">AFİYET OLSUN!</div>
+            <div style="color: #fde047; font-size: 13px; font-weight: bold; margin-top: 4px;">TEPSİ HAZIRLANDI (GÖREV TAMAMLANDI)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="task-footer" style="background: #1e293b; padding: 10px 18px; color: #94a3b8; font-size: 13px; text-align: center;">
+        <span>Yiyecekleri tıkla ve tepsideki uygun bölmelerine yerleştir</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Sabotage Crisis Alarm Banner -->
+  <div id="crisis-banner" class="crisis-banner-hud hidden">
+    <div class="crisis-icon-pulse">⚠️</div>
+    <div id="crisis-banner-text" class="crisis-text">REACTOR MELTDOWN IN 30s</div>
+  </div>
+
+  <!-- Sabotage Fix Modal 1: Electrical Lights (5 Circuit Breakers) -->
+  <div id="fix-lights-modal" class="modal-overlay hidden">
+    <div class="task-window" style="width: 500px; background: #0f172a; border: 3px solid #f59e0b; border-radius: 12px; box-shadow: 0 10px 35px rgba(0,0,0,0.85);">
+      <div class="task-window-header" style="background: #1e293b; color: #fbbf24;">
+        <span>ELECTRICAL: FIX LIGHTS (CIRCUIT BREAKERS)</span>
+        <button class="btn-close-task" onclick="window.closeFixSabotageModal()">✕</button>
+      </div>
+      <div style="padding: 28px 16px; display: flex; justify-content: space-around; background: #020617; border-top: 1px solid #334155; border-bottom: 1px solid #334155;">
+        <div class="light-switch" data-idx="0" style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+          <div class="switch-led" id="sw-led-0" style="width: 16px; height: 16px; border-radius: 50%; background: #ef4444; margin-bottom: 10px; box-shadow: 0 0 10px #ef4444;"></div>
+          <div class="switch-track" style="width: 42px; height: 80px; background: #1e293b; border-radius: 8px; position: relative; border: 2px solid #475569;">
+            <div class="switch-handle" id="sw-h-0" style="width: 38px; height: 38px; background: #94a3b8; border-radius: 6px; position: absolute; left: 0; bottom: 2px; transition: bottom 0.15s ease;"></div>
+          </div>
+        </div>
+        <div class="light-switch" data-idx="1" style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+          <div class="switch-led" id="sw-led-1" style="width: 16px; height: 16px; border-radius: 50%; background: #ef4444; margin-bottom: 10px; box-shadow: 0 0 10px #ef4444;"></div>
+          <div class="switch-track" style="width: 42px; height: 80px; background: #1e293b; border-radius: 8px; position: relative; border: 2px solid #475569;">
+            <div class="switch-handle" id="sw-h-1" style="width: 38px; height: 38px; background: #94a3b8; border-radius: 6px; position: absolute; left: 0; bottom: 2px; transition: bottom 0.15s ease;"></div>
+          </div>
+        </div>
+        <div class="light-switch" data-idx="2" style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+          <div class="switch-led" id="sw-led-2" style="width: 16px; height: 16px; border-radius: 50%; background: #ef4444; margin-bottom: 10px; box-shadow: 0 0 10px #ef4444;"></div>
+          <div class="switch-track" style="width: 42px; height: 80px; background: #1e293b; border-radius: 8px; position: relative; border: 2px solid #475569;">
+            <div class="switch-handle" id="sw-h-2" style="width: 38px; height: 38px; background: #94a3b8; border-radius: 6px; position: absolute; left: 0; bottom: 2px; transition: bottom 0.15s ease;"></div>
+          </div>
+        </div>
+        <div class="light-switch" data-idx="3" style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+          <div class="switch-led" id="sw-led-3" style="width: 16px; height: 16px; border-radius: 50%; background: #ef4444; margin-bottom: 10px; box-shadow: 0 0 10px #ef4444;"></div>
+          <div class="switch-track" style="width: 42px; height: 80px; background: #1e293b; border-radius: 8px; position: relative; border: 2px solid #475569;">
+            <div class="switch-handle" id="sw-h-3" style="width: 38px; height: 38px; background: #94a3b8; border-radius: 6px; position: absolute; left: 0; bottom: 2px; transition: bottom 0.15s ease;"></div>
+          </div>
+        </div>
+        <div class="light-switch" data-idx="4" style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+          <div class="switch-led" id="sw-led-4" style="width: 16px; height: 16px; border-radius: 50%; background: #ef4444; margin-bottom: 10px; box-shadow: 0 0 10px #ef4444;"></div>
+          <div class="switch-track" style="width: 42px; height: 80px; background: #1e293b; border-radius: 8px; position: relative; border: 2px solid #475569;">
+            <div class="switch-handle" id="sw-h-4" style="width: 38px; height: 38px; background: #94a3b8; border-radius: 6px; position: absolute; left: 0; bottom: 2px; transition: bottom 0.15s ease;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Click breakers to toggle them UP to green and restore lights</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sabotage Fix Modal 2: Reactor Meltdown (Hand Scanner) -->
+  <div id="fix-reactor-modal" class="modal-overlay hidden">
+    <div class="task-window" style="width: 420px; background: #0f172a; border: 3px solid #ef4444; border-radius: 12px; box-shadow: 0 10px 35px rgba(239,68,68,0.5);">
+      <div class="task-window-header" style="background: #1e293b; color: #f87171;">
+        <span>REACTOR: HOLD TO STABILIZE</span>
+        <button class="btn-close-task" onclick="window.closeFixSabotageModal()">✕</button>
+      </div>
+      <div style="padding: 28px; display: flex; flex-direction: column; align-items: center; background: #020617;">
+        <div id="reactor-hold-pad" style="width: 190px; height: 210px; background: #1e293b; border: 3px dashed #ef4444; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; user-select: none;">
+          <span style="font-size: 64px;">✋</span>
+          <span id="reactor-hold-text" style="color: #f87171; font-weight: bold; margin-top: 10px; font-size: 14px;">HOLD TO PREVENT MELTDOWN</span>
+          <div style="width: 140px; height: 12px; background: #334155; border-radius: 6px; margin-top: 12px; overflow: hidden;">
+            <div id="reactor-hold-fill" style="width: 0%; height: 100%; background: #22c55e; transition: width 0.1s linear;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Press and hold hand scanner for 2 seconds to stop reactor meltdown</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sabotage Fix Modal 3: O2 Oxygen Depletion (Pinpad & Sticky Note) -->
+  <div id="fix-o2-modal" class="modal-overlay hidden">
+    <div class="task-window" style="width: 460px; background: #0f172a; border: 3px solid #38bdf8; border-radius: 12px; box-shadow: 0 10px 35px rgba(56,189,248,0.4);">
+      <div class="task-window-header" style="background: #1e293b; color: #38bdf8;">
+        <span>OXYGEN: ENTER PURGE CODE</span>
+        <button class="btn-close-task" onclick="window.closeFixSabotageModal()">✕</button>
+      </div>
+      <div style="padding: 20px; display: flex; gap: 20px; background: #020617; align-items: center; justify-content: center;">
+        <div style="width: 110px; height: 130px; background: #fef08a; color: #854d0e; padding: 12px; font-family: monospace; font-size: 13px; font-weight: bold; box-shadow: 2px 4px 10px rgba(0,0,0,0.5); transform: rotate(-4deg); border-radius: 2px;">
+          <div style="border-bottom: 2px solid #ca8a04; padding-bottom: 4px; margin-bottom: 8px;">TODAY'S CODE:</div>
+          <div id="o2-sticky-code" style="font-size: 24px; color: #1e293b; letter-spacing: 2px; text-align: center; margin-top: 12px;">72941</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <div id="o2-code-display" style="width: 160px; height: 38px; background: #1e293b; border: 2px solid #475569; border-radius: 6px; color: #22c55e; font-family: monospace; font-size: 22px; font-weight: bold; display: flex; align-items: center; justify-content: center; letter-spacing: 4px; margin-bottom: 10px;">_____</div>
+          <div id="o2-keypad-grid" style="display: grid; grid-template-columns: repeat(3, 46px); gap: 6px;"></div>
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Enter the 5-digit code shown on the sticky note to clear oxygen depletion</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fix Sabotage: Communications (Radio Frequency Tuning Minigame) -->
+  <div id="fix-comms-modal" class="modal-overlay hidden">
+    <div class="task-window" style="width: 520px; background: #0f172a; border: 3px solid #eab308; border-radius: 12px; box-shadow: 0 10px 35px rgba(234,179,8,0.35);">
+      <div class="task-window-header" style="background: #1e293b; color: #fde047;">
+        <span>COMMUNICATIONS: TUNE RADIO FREQUENCY</span>
+        <button class="btn-close-task" onclick="window.closeFixSabotageModal()">✕</button>
+      </div>
+      <div style="padding: 24px; background: #020617; display: flex; flex-direction: column; align-items: center; gap: 18px;">
+        <!-- Oscilloscope Waveform Display -->
+        <div style="position: relative; width: 100%; height: 130px; background: #030d06; border: 2px solid #22c55e; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 20px rgba(34,197,94,0.3);">
+          <canvas id="comms-radio-canvas" width="470" height="130" style="width: 100%; height: 100%; display: block;"></canvas>
+          <div id="comms-match-badge" style="position: absolute; right: 12px; top: 10px; font-size: 11px; font-weight: bold; padding: 4px 10px; border-radius: 6px; background: #dc2626; color: #fff; letter-spacing: 1px;">NO SIGNAL</div>
+        </div>
+
+        <!-- Frequency Tuning Slider / Dial -->
+        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; width: 100%; color: #94a3b8; font-size: 13px; font-weight: bold;">
+            <span>88.0 MHz</span>
+            <span id="comms-freq-readout" style="color: #fde047; font-size: 16px; font-family: monospace;">TUNING: 94.2 MHz</span>
+            <span>108.0 MHz</span>
+          </div>
+          <input type="range" id="comms-freq-slider" min="0" max="1000" value="200" style="width: 100%; accent-color: #eab308; cursor: pointer; height: 14px;">
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Rotate frequency dial until the red wave aligns with the green target signal</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Minimap Modal -->
+  <div id="map-modal" class="modal-overlay hidden">
+    <div class="map-window">
+      <div class="map-window-header">
+        <span>THE SKELD - MAP</span>
+        <button class="btn-close-task" onclick="window.closeMinimap()">✕</button>
+      </div>
+      <canvas id="minimap-canvas" width="700" height="400"></canvas>
+    </div>
+  </div>
+
+  <!-- Security Room Surveillance Cameras Modal (Matching Photo 5) -->
+  <div id="security-cameras-modal" class="modal-overlay hidden" style="z-index: 9999; background: rgba(0,0,0,0.9); align-items: center; justify-content: center;">
+    <div class="security-cams-stage" style="position: relative; width: 880px; max-width: 95vw; display: flex; flex-direction: column; align-items: center; margin: auto;">
+      <!-- Monitor Frame -->
+      <div style="position: relative; width: 100%; aspect-ratio: 1057 / 960; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.9); border: 8px solid #1e293b; background: #000;">
+        <canvas id="cams-composite-canvas" width="1057" height="1005" style="width: 100%; height: 100%; display: block;"></canvas>
+        <button id="btn-close-cams" class="btn-close-task" style="position: absolute; right: 18px; top: 18px; z-index: 20; font-size: 22px; width: 42px; height: 42px; background: rgba(15,23,42,0.85); color: #fff; border: 2px solid #475569; border-radius: 8px; cursor: pointer;" onclick="window.closeSecurityCams()">✕</button>
+        <div class="cams-rec-indicator" style="position: absolute; left: 28px; top: 24px; z-index: 20; color: #ef4444; font-weight: bold; font-family: monospace; font-size: 20px; text-shadow: 0 0 10px #ef4444; display: flex; align-items: center; gap: 8px;">
+          <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: recBlink 1s infinite alternate;"></span> REC
+        </div>
+      </div>
+      <!-- Desk with Keyboard & Mouse (Photo 5) -->
+      <div style="width: 100%; height: 90px; background: linear-gradient(to bottom, #334155, #1e293b); border-radius: 0 0 14px 14px; border-top: 4px solid #475569; display: flex; align-items: center; justify-content: center; gap: 50px; box-shadow: inset 0 2px 8px rgba(255,255,255,0.1);">
+        <!-- Keyboard -->
+        <div style="width: 280px; height: 46px; background: #0f172a; border: 2px solid #64748b; border-radius: 6px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: 5px; box-shadow: 0 3px 6px rgba(0,0,0,0.5);">
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #334155; border-radius: 2px;"></div>
+          <div style="background: #475569; border-radius: 2px;"></div>
+        </div>
+        <!-- Mouse -->
+        <div style="width: 32px; height: 50px; background: #0f172a; border: 2px solid #64748b; border-radius: 16px 16px 12px 12px; position: relative; box-shadow: 0 3px 6px rgba(0,0,0,0.5);">
+          <div style="width: 2px; height: 16px; background: #64748b; margin: 4px auto 0 auto;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 6: Empty Garbage -->
+  <div id="task-modal-garbage" class="modal-overlay hidden">
+    <div class="task-window garbage-window">
+      <div class="task-window-header">
+        <span>CAFETERIA: EMPTY GARBAGE</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="garbage-chute-box">
+        <div class="garbage-bin" id="garbage-bin">
+          <div class="garbage-item">🥤</div>
+          <div class="garbage-item">📦</div>
+          <div class="garbage-item">🍌</div>
+          <div class="garbage-item">📄</div>
+          <div class="garbage-item">🥫</div>
+          <div class="garbage-item">💎</div>
+        </div>
+        <div class="garbage-lever-box">
+          <div id="garbage-lever-handle" class="garbage-lever-handle">⬇️ PULL & HOLD</div>
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Pull and hold down lever until all trash is emptied into space</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 7: Start Reactor (Simon Says - Fotoğraf 2 Orijinal Layout) -->
+  <div id="task-modal-reactor" class="modal-overlay hidden">
+    <div class="task-window reactor-window" style="width: 530px; background: transparent; border: none; box-shadow: none;">
+      <div class="task-window-header" style="background: rgba(15, 23, 42, 0.95); border-radius: 12px 12px 0 0;">
+        <span>REACTOR: START REACTOR (<span id="reactor-stage-num">1</span>/5)</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="reactor-board-authentic" style="position: relative; width: 494px; height: 281px; margin: 0 auto; background: url('assets/Images/Tasks/Start%20Reactor/reactor_base1.PNG') no-repeat center; background-size: contain;">
+        <!-- Left Display: 3x3 Flashing Lights -->
+        <div class="reactor-left-screen" style="position: absolute; left: 45px; top: 40px; width: 156px; height: 156px; display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); gap: 6px; padding: 5px; box-sizing: border-box; background: rgba(0,0,0,0.35); border-radius: 6px;">
+          <div class="reactor-flash-tile" data-idx="0"></div>
+          <div class="reactor-flash-tile" data-idx="1"></div>
+          <div class="reactor-flash-tile" data-idx="2"></div>
+          <div class="reactor-flash-tile" data-idx="3"></div>
+          <div class="reactor-flash-tile" data-idx="4"></div>
+          <div class="reactor-flash-tile" data-idx="5"></div>
+          <div class="reactor-flash-tile" data-idx="6"></div>
+          <div class="reactor-flash-tile" data-idx="7"></div>
+          <div class="reactor-flash-tile" data-idx="8"></div>
+        </div>
+
+        <!-- Center 5-Stage Indicator Lights -->
+        <div class="reactor-stage-indicators" style="position: absolute; left: 220px; top: 45px; width: 54px; display: flex; flex-direction: column; gap: 14px; align-items: center;">
+          <div class="stage-led" id="stage-led-1"></div>
+          <div class="stage-led" id="stage-led-2"></div>
+          <div class="stage-led" id="stage-led-3"></div>
+          <div class="stage-led" id="stage-led-4"></div>
+          <div class="stage-led" id="stage-led-5"></div>
+        </div>
+
+        <!-- Right Keypad: 3x3 User Buttons -->
+        <div class="reactor-right-keypad" id="reactor-input-grid" style="position: absolute; right: 45px; top: 40px; width: 156px; height: 156px; display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); gap: 6px; padding: 5px; box-sizing: border-box; background: rgba(0,0,0,0.35); border-radius: 6px;">
+          <button class="reactor-key-btn" data-idx="0"></button>
+          <button class="reactor-key-btn" data-idx="1"></button>
+          <button class="reactor-key-btn" data-idx="2"></button>
+          <button class="reactor-key-btn" data-idx="3"></button>
+          <button class="reactor-key-btn" data-idx="4"></button>
+          <button class="reactor-key-btn" data-idx="5"></button>
+          <button class="reactor-key-btn" data-idx="6"></button>
+          <button class="reactor-key-btn" data-idx="7"></button>
+          <button class="reactor-key-btn" data-idx="8"></button>
+        </div>
+      </div>
+      <div class="task-footer" style="background: rgba(15, 23, 42, 0.95); border-radius: 0 0 12px 12px;">
+        <span>Memorize the flashing sequence on the left and repeat it on the right keypad</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kill Splash Screen Animation Modal (Fotoğraf 4 - Orijinal Among Us Kill) -->
+  <div id="kill-animation-modal" class="modal-overlay hidden" style="z-index: 99999; background: #000; justify-content: center; align-items: center;">
+    <div style="width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden;">
+      <img id="kill-anim-screen-img" src="assets/Images/Alerts/kill1.png" style="max-width: 95vw; max-height: 90vh; object-fit: contain;" alt="Kill Animation">
+    </div>
+  </div>
+
+  <!-- Task Minigame 8: Stabilize Steering -->
+  <div id="task-modal-steering" class="modal-overlay hidden">
+    <div class="task-window steering-window">
+      <div class="task-window-header">
+        <span>NAVIGATION: STABILIZE STEERING</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="steering-radar-box">
+        <canvas id="steering-canvas" width="460" height="340"></canvas>
+      </div>
+      <div class="task-footer">
+        <span>Click the target reticle to center the ship's navigation course</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Minigame 9: Submit MedBay Scan -->
+  <div id="task-modal-medbay-scan" class="modal-overlay hidden">
+    <div class="task-window medbay-window">
+      <div class="task-window-header">
+        <span>MEDBAY: SUBMIT SCAN</span>
+        <button class="btn-close-task" onclick="window.closeCurrentTask()">✕</button>
+      </div>
+      <div class="medbay-scan-screen">
+        <div class="scan-hologram-stage" id="scan-hologram-stage">
+          <div class="scan-laser-ring" id="scan-laser-ring"></div>
+          <div id="medbay-avatar-hologram" class="medbay-avatar-hologram"></div>
+        </div>
+        <div class="medbay-vitals-report">
+          <div>ID: <b id="medbay-scan-id">CREW-8942</b></div>
+          <div>WEIGHT: <b>92 KG</b></div>
+          <div>BLOOD TYPE: <b>O-NEG</b></div>
+          <div id="medbay-scan-status" class="scan-status-text">SCANNING IN PROGRESS... 10s</div>
+        </div>
+      </div>
+      <div class="task-footer">
+        <span>Stand on platform while the biometric visual scanner verifies crew integrity</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OKUL / MEB / EBA KAMUFLAJ VE FİZİK DERS NOTLARI EKRANI (F9 İLE AÇILIR/KAPANIR) -->
+  <div id="school-panic-screen" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #f8fafc; color: #1e293b; z-index: 9999999; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-y: auto;">
+    <div style="background: #e11d48; color: #fff; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 3px 12px rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 100;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span style="font-size: 30px;">🎓</span>
+        <div>
+          <div style="font-size: 17px; font-weight: 800; letter-spacing: 0.5px;">T.C. MİLLİ EĞİTİM BAKANLIĞI — EBA DERS AKIŞI</div>
+          <div style="font-size: 12px; opacity: 0.95;">Bilişim Teknolojileri, 2D Modelleme ve Fizik Simülasyon Çalışma Portalı</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span style="font-size: 13px; background: rgba(255,255,255,0.22); padding: 5px 12px; border-radius: 6px; font-weight: bold;">Ders: Fizik - 11. Sınıf</span>
+        <button onclick="window.toggleSchoolDisguise()" style="background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.5); color: white; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; font-weight: 800; transition: background 0.15s;">✕ Simülasyona Dön (F9)</button>
+      </div>
+    </div>
+
+    <div style="max-width: 980px; margin: 30px auto; padding: 0 24px;">
+      <div style="background: #fff; border-radius: 12px; padding: 26px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 22px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+          <h2 style="color: #0f172a; margin: 0; font-size: 21px;">
+            📚 Ünite 2: 2 Boyutlu Vektör Uzayı ve Kinematik Hareket Prensipleri
+          </h2>
+          <span style="background: #ecfdf5; color: #047857; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; border: 1px solid #a7f3d0;">● Çevrimiçi Laboratuvar</span>
+        </div>
+        <p style="color: #475569; line-height: 1.7; font-size: 14.5px;">
+          İki boyutlu kartezyen koordinat sisteminde hareket denklemleri, Newton'un temel hareket yasaları üzerinden modellenmektedir.
+          Sistemde bir parçacığın konum vektörü <strong>r(t) = x(t)î + y(t)ĵ</strong> fonksiyonuyla hesaplanmakta, hız ve ivme vektörleri türev bağıntılarıyla simüle edilmektedir.
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin: 22px 0;">
+          <div style="background: #f8fafc; border-left: 4px solid #3b82f6; padding: 14px 18px; border-radius: 8px;">
+            <div style="font-weight: bold; color: #1d4ed8; font-size: 13px;">Temel Dinamik Yasası</div>
+            <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 6px 0;">F_net = m · a</div>
+            <div style="font-size: 12px; color: #64748b;">Kuvvet (N), kütle (kg) ve ivme (m/s²) bağıntısı.</div>
+          </div>
+
+          <div style="background: #f8fafc; border-left: 4px solid #10b981; padding: 14px 18px; border-radius: 8px;">
+            <div style="font-weight: bold; color: #047857; font-size: 13px;">Kinetik & Potansiyel Enerji</div>
+            <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 6px 0;">E_k = ½ · m · v²</div>
+            <div style="font-size: 12px; color: #64748b;">Mekanik enerjinin korunumu ve sürtünme kaybı.</div>
+          </div>
+
+          <div style="background: #f8fafc; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px;">
+            <div style="font-weight: bold; color: #b45309; font-size: 13px;">Momentum ve İtme</div>
+            <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 6px 0;">ΔP = F · Δt = m · Δv</div>
+            <div style="font-size: 12px; color: #64748b;">Çarpışmalarda çizgisel momentumun korunumu.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background: #fff; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 22px;">
+        <h3 style="color: #0f172a; margin-top: 0; font-size: 17px; margin-bottom: 12px;">📝 Öğrenci Laboratuvar Notları & Simülasyon Özeti</h3>
+        <p style="color: #475569; font-size: 13.5px; line-height: 1.7;">
+          Simülasyon motoru parametreleri: Sürtünme katsayısı (μ = 0.25), yerçekimi ivmesi (g = 9.81 m/s²), elastik çarpışma toleransı ve 60 FPS delta-zaman hesaplamaları aktif durumdadır.
+          Öğrenci çalışma adımları: Vektörel yönelim doğrulaması ve engellerle etkileşim analizi başarıyla kaydedilmiştir.
+        </p>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 14px; margin-top: 16px; font-size: 12px; color: #94a3b8;">
+          <span>Sistem Durumu: Çevrimiçi Modül Aktif</span>
+          <span>MEB Bilişim Ağı (EBA) — Sürüm 2.4.1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js?v=3.0"></script>
+</body>
+</html>
