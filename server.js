@@ -70,6 +70,207 @@ app.use(express.static(path.join(__dirname, 'public'), { etag: false, maxAge: 0 
 app.use(express.static(__dirname, { etag: false, maxAge: 0 }));
 
 
+// ==================== USER ACCOUNTS & BANS PERSISTENCE ====================
+const USERS_FILE = path.join(__dirname, 'users.json');
+const BANS_FILE = path.join(__dirname, 'bans.json');
+
+function loadUsers() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+      if (data && typeof data === 'object') {
+        if (!data.users) data.users = {};
+        if (!data.users['ensar']) {
+          data.users['ensar'] = {
+            username: 'ensar',
+            password: 'Ensarbaba44',
+            role: 'admin',
+            createdAt: new Date().toISOString()
+          };
+          saveUsers(data);
+        } else {
+          data.users['ensar'].password = 'Ensarbaba44';
+          data.users['ensar'].role = 'admin';
+        }
+        return data;
+      }
+    }
+  } catch (e) {
+    console.error('Error reading users.json:', e);
+  }
+  const defaultData = {
+    users: {
+      ensar: {
+        username: 'ensar',
+        password: 'Ensarbaba44',
+        role: 'admin',
+        createdAt: new Date().toISOString()
+      }
+    }
+  };
+  saveUsers(defaultData);
+  return defaultData;
+}
+
+function saveUsers(data) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving users.json:', e);
+  }
+}
+
+function loadBans() {
+  try {
+    if (fs.existsSync(BANS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(BANS_FILE, 'utf8'));
+      if (data && typeof data === 'object') {
+        if (!Array.isArray(data.bannedIps)) data.bannedIps = [];
+        if (!Array.isArray(data.bannedUsers)) data.bannedUsers = [];
+        if (!Array.isArray(data.bannedRecords)) data.bannedRecords = [];
+        return data;
+      }
+    }
+  } catch (e) {
+    console.error('Error reading bans.json:', e);
+  }
+  const defaultBans = {
+    bannedIps: [],
+    bannedUsers: [],
+    bannedRecords: []
+  };
+  saveBans(defaultBans);
+  return defaultBans;
+}
+
+function saveBans(data) {
+  try {
+    fs.writeFileSync(BANS_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving bans.json:', e);
+  }
+}
+
+function isBanned(ip, username = null) {
+  const bans = loadBans();
+  if (ip && bans.bannedIps.includes(ip)) return true;
+  if (username && bans.bannedUsers.includes(username.toLowerCase())) return true;
+  return false;
+}
+
+// Global active connections map: ws -> clientInfo
+const connectedSockets = new Map();
+
+function getClientIp(ws, req) {
+  let ip = '';
+  if (req && req.headers && req.headers['x-forwarded-for']) {
+    ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+  } else if (req && req.socket && req.socket.remoteAddress) {
+    ip = req.socket.remoteAddress;
+  } else if (ws._socket && ws._socket.remoteAddress) {
+    ip = ws._socket.remoteAddress;
+  }
+  if (ip && ip.startsWith('::ffff:')) {
+    ip = ip.substring(7);
+  }
+  return ip || '127.0.0.1';
+}
+
+function sendRoomPlayersUpdate(room, targetWs = null) {
+  if (!room) return;
+  const pList = Array.from(room.players.values()).map(p => ({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    isHost: p.id === room.hostId,
+    isDummy: !!p.isDummy
+  }));
+
+  const payload = {
+    type: 'ROOM_PLAYERS_UPDATE',
+    roomCode: room.code,
+    hostId: room.hostId,
+    players: pList
+  };
+
+  if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+    targetWs.send(JSON.stringify(payload));
+  } else {
+    broadcast(room, 'ROOM_PLAYERS_UPDATE', payload);
+  }
+}
+
+function broadcastAdminStats() {
+  const usersData = loadUsers();
+  const bansData = loadBans();
+
+  const roomsList = [];
+  for (const [code, r] of rooms) {
+    const host = r.players.get(r.hostId);
+    roomsList.push({
+      code: r.code,
+      state: r.state,
+      isPublic: r.isPublic !== false,
+      isFreeplay: !!r.isFreeplay,
+      hostId: r.hostId,
+      hostName: host ? host.name : 'Yok',
+      playerCount: r.players.size,
+      maxPlayers: r.maxPlayers || 20,
+      players: Array.from(r.players.values()).map(p => ({
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        isAlive: p.isAlive !== false,
+        isImpostor: !!p.isImpostor,
+        isDummy: !!p.isDummy,
+        ip: p.ip || '127.0.0.1',
+        username: p.registeredUsername || null,
+        connId: p.connId || null
+      }))
+    });
+  }
+
+  const clientsList = [];
+  for (const [s, c] of connectedSockets) {
+    clientsList.push({
+      connId: c.connId,
+      ip: c.ip,
+      username: c.user ? c.user.username : null,
+      isRegistered: !!c.user,
+      isAdmin: !!c.isAdmin,
+      playerName: c.player ? c.player.name : null,
+      playerId: c.player ? c.player.id : null,
+      roomCode: c.room ? c.room.code : null,
+      status: c.room ? ('Oda: ' + c.room.code + ' (' + c.room.state + ')') : 'Ana Menüde',
+      connectedAt: c.connectedAt
+    });
+  }
+
+  const data = JSON.stringify({
+    type: 'ADMIN_STATS_UPDATE',
+    stats: {
+      onlineCount: connectedSockets.size,
+      roomCount: rooms.size,
+      registeredCount: Object.keys(usersData.users || {}).length,
+      bannedCount: (bansData.bannedIps.length + bansData.bannedUsers.length),
+      rooms: roomsList,
+      clients: clientsList,
+      bans: bansData.bannedRecords || []
+    }
+  });
+
+  for (const [s, c] of connectedSockets) {
+    if (c.isAdmin && s.readyState === WebSocket.OPEN) {
+      s.send(data);
+    }
+  }
+}
+
+// Initial ensure admin user on startup
+loadUsers();
+loadBans();
+// =========================================================================
+
 // Colors available in Among Us
 const COLORS = [
   'Red', 'Blue', 'Green', 'Pink', 'Orange', 'Yellow', 'Black', 'White', 'Purple', 'Brown'
@@ -96,6 +297,8 @@ function createRoom(code, isFreeplay = false) {
     hostId: null,
     players: new Map(), // id -> player object
     deadBodies: [],    // { id, x, y, color, victimName }
+    bannedPlayerIds: new Set(),
+    bannedIps: new Set(),
     state: isFreeplay ? 'PLAYING' : 'LOBBY', // 'LOBBY', 'PLAYING', 'MEETING', 'EJECTION', 'ENDED'
     meeting: null,
     taskTotal: 0,
@@ -449,7 +652,36 @@ function endMeeting(room) {
   }, 6500);
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const clientIp = getClientIp(ws, req);
+  const connId = 'c_' + Math.random().toString(36).substring(2, 9);
+
+  if (isBanned(clientIp)) {
+    ws.send(JSON.stringify({
+      type: 'BANNED',
+      reason: 'Bu sunucudan IP adresiniz üzerinden kalıcı olarak yasaklandınız!'
+    }));
+    try { ws.close(); } catch(e) {}
+    return;
+  }
+
+  const clientInfo = {
+    ws,
+    connId,
+    ip: clientIp,
+    user: null,
+    isAdmin: false,
+    player: null,
+    room: null,
+    connectedAt: Date.now()
+  };
+  connectedSockets.set(ws, clientInfo);
+
+  ws.send(JSON.stringify({
+    type: 'CONNECTED',
+    connId: connId,
+    clientIp: clientIp
+  }));
   let currentPlayer = null;
   let currentRoom = null;
 
@@ -483,6 +715,11 @@ wss.on('connection', (ws) => {
           };
 
           currentRoom.hostId = currentPlayer.id;
+          currentPlayer.connId = clientInfo.connId;
+          currentPlayer.ip = clientInfo.ip;
+          currentPlayer.registeredUsername = clientInfo.user ? clientInfo.user.username : null;
+          clientInfo.player = currentPlayer;
+          clientInfo.room = currentRoom;
           currentRoom.players.set(currentPlayer.id, currentPlayer);
 
           ws.send(JSON.stringify({
@@ -507,6 +744,15 @@ wss.on('connection', (ws) => {
             return;
           }
 
+          // Room ban check
+          if (targetRoom.bannedPlayerIds && (targetRoom.bannedPlayerIds.has(clientInfo.connId) || (clientInfo.user && targetRoom.bannedPlayerIds.has(clientInfo.user.username.toLowerCase())))) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Bu odaya girişiniz oda sahibi tarafından yasaklanmıştır!' }));
+            return;
+          }
+          if (targetRoom.bannedIps && targetRoom.bannedIps.has(clientInfo.ip)) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Bu odaya girişiniz oda sahibi tarafından yasaklanmıştır!' }));
+            return;
+          }
           const maxLimit = targetRoom.maxPlayers || 20;
           if (targetRoom.players.size >= maxLimit) {
             ws.send(JSON.stringify({ type: 'ERROR', message: `Room is full (max ${maxLimit} players).` }));
@@ -536,6 +782,11 @@ wss.on('connection', (ws) => {
             completedTasks: 0
           };
 
+          currentPlayer.connId = clientInfo.connId;
+          currentPlayer.ip = clientInfo.ip;
+          currentPlayer.registeredUsername = clientInfo.user ? clientInfo.user.username : null;
+          clientInfo.player = currentPlayer;
+          clientInfo.room = currentRoom;
           currentRoom.players.set(currentPlayer.id, currentPlayer);
 
           ws.send(JSON.stringify({
@@ -610,6 +861,11 @@ wss.on('connection', (ws) => {
             completedTasks: 0
           };
           currentRoom.hostId = currentPlayer.id;
+          currentPlayer.connId = clientInfo.connId;
+          currentPlayer.ip = clientInfo.ip;
+          currentPlayer.registeredUsername = clientInfo.user ? clientInfo.user.username : null;
+          clientInfo.player = currentPlayer;
+          clientInfo.room = currentRoom;
           currentRoom.players.set(currentPlayer.id, currentPlayer);
 
           // Add 3 dummies in the dropship
@@ -962,6 +1218,379 @@ wss.on('connection', (ws) => {
           });
           break;
         }
+        // ================= AUTHENTICATION HANDLERS =================
+        case 'REGISTER': {
+          const username = (msg.username || '').trim();
+          const password = (msg.password || '').trim();
+
+          if (!username || username.length < 3) {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Kullanıcı adı en az 3 karakter olmalıdır!' }));
+            break;
+          }
+          if (!password || password.length < 4) {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Şifre en az 4 karakter olmalıdır!' }));
+            break;
+          }
+
+          const usersData = loadUsers();
+          const lowerUser = username.toLowerCase();
+          if (usersData.users[lowerUser] && lowerUser !== 'ensar') {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Bu kullanıcı adı zaten alınmış!' }));
+            break;
+          }
+
+          const role = (lowerUser === 'ensar') ? 'admin' : 'user';
+          usersData.users[lowerUser] = {
+            username: (lowerUser === 'ensar') ? 'ensar' : username,
+            password: password,
+            role: role,
+            createdAt: new Date().toISOString()
+          };
+          saveUsers(usersData);
+
+          clientInfo.user = { username: usersData.users[lowerUser].username, role: role };
+          clientInfo.isAdmin = (role === 'admin');
+          if (currentPlayer) currentPlayer.registeredUsername = clientInfo.user.username;
+
+          ws.send(JSON.stringify({
+            type: 'AUTH_SUCCESS',
+            user: clientInfo.user,
+            isAdmin: clientInfo.isAdmin,
+            message: 'Kayıt başarılı! Giriş yapıldı.'
+          }));
+          broadcastAdminStats();
+          break;
+        }
+
+        case 'LOGIN': {
+          const username = (msg.username || '').trim();
+          const password = (msg.password || '').trim();
+
+          if (!username || !password) {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Kullanıcı adı ve şifre gereklidir!' }));
+            break;
+          }
+
+          const lowerUser = username.toLowerCase();
+          if (isBanned(clientInfo.ip, lowerUser)) {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Bu hesap veya IP adresi yasaklanmıştır!' }));
+            break;
+          }
+
+          const usersData = loadUsers();
+          let matchedUser = usersData.users[lowerUser];
+
+          // Hardcoded guarantee for admin credentials: ensar / Ensarbaba44
+          if (lowerUser === 'ensar' && password === 'Ensarbaba44') {
+            matchedUser = {
+              username: 'ensar',
+              password: 'Ensarbaba44',
+              role: 'admin'
+            };
+            usersData.users['ensar'] = matchedUser;
+            saveUsers(usersData);
+          }
+
+          if (!matchedUser || matchedUser.password !== password) {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Geçersiz kullanıcı adı veya şifre!' }));
+            break;
+          }
+
+          clientInfo.user = { username: matchedUser.username, role: matchedUser.role };
+          clientInfo.isAdmin = (matchedUser.role === 'admin');
+          if (currentPlayer) currentPlayer.registeredUsername = clientInfo.user.username;
+
+          ws.send(JSON.stringify({
+            type: 'AUTH_SUCCESS',
+            user: clientInfo.user,
+            isAdmin: clientInfo.isAdmin,
+            message: 'Başarıyla giriş yapıldı!'
+          }));
+          broadcastAdminStats();
+          break;
+        }
+
+        case 'LOGOUT': {
+          clientInfo.user = null;
+          clientInfo.isAdmin = false;
+          if (currentPlayer) currentPlayer.registeredUsername = null;
+          ws.send(JSON.stringify({ type: 'AUTH_LOGOUT', message: 'Çıkış yapıldı.' }));
+          broadcastAdminStats();
+          break;
+        }
+
+        // ================= ADMIN PANEL HANDLERS =================
+        case 'ADMIN_GET_STATS': {
+          if (!clientInfo.isAdmin) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Yetkisiz erişim! Yönetici girişi yapmalısınız.' }));
+            break;
+          }
+
+          const usersData = loadUsers();
+          const bansData = loadBans();
+
+          const roomsList = [];
+          for (const [code, r] of rooms) {
+            const host = r.players.get(r.hostId);
+            roomsList.push({
+              code: r.code,
+              state: r.state,
+              isPublic: r.isPublic !== false,
+              isFreeplay: !!r.isFreeplay,
+              hostId: r.hostId,
+              hostName: host ? host.name : 'Yok',
+              playerCount: r.players.size,
+              maxPlayers: r.maxPlayers || 20,
+              players: Array.from(r.players.values()).map(p => ({
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                isAlive: p.isAlive !== false,
+                isImpostor: !!p.isImpostor,
+                isDummy: !!p.isDummy,
+                ip: p.ip || '127.0.0.1',
+                username: p.registeredUsername || null,
+                connId: p.connId || null
+              }))
+            });
+          }
+
+          const clientsList = [];
+          for (const [s, c] of connectedSockets) {
+            clientsList.push({
+              connId: c.connId,
+              ip: c.ip,
+              username: c.user ? c.user.username : null,
+              isRegistered: !!c.user,
+              isAdmin: !!c.isAdmin,
+              playerName: c.player ? c.player.name : null,
+              playerId: c.player ? c.player.id : null,
+              roomCode: c.room ? c.room.code : null,
+              status: c.room ? ('Oda: ' + c.room.code + ' (' + c.room.state + ')') : 'Ana Menüde',
+              connectedAt: c.connectedAt
+            });
+          }
+
+          ws.send(JSON.stringify({
+            type: 'ADMIN_STATS_UPDATE',
+            stats: {
+              onlineCount: connectedSockets.size,
+              roomCount: rooms.size,
+              registeredCount: Object.keys(usersData.users || {}).length,
+              bannedCount: (bansData.bannedIps.length + bansData.bannedUsers.length),
+              rooms: roomsList,
+              clients: clientsList,
+              bans: bansData.bannedRecords || []
+            }
+          }));
+          break;
+        }
+
+        case 'ADMIN_KICK_PLAYER': {
+          if (!clientInfo.isAdmin) return;
+          const targetId = msg.targetId;
+
+          for (const [s, c] of connectedSockets) {
+            if (c.connId === targetId || (c.player && c.player.id === targetId) || (c.user && c.user.username === targetId)) {
+              if (c.room && c.player) {
+                c.room.players.delete(c.player.id);
+                broadcast(c.room, 'CHAT_MESSAGE', {
+                  sender: 'YÖNETİCİ',
+                  color: 'Red',
+                  text: `${c.player.name} yönetici tarafından oyundan atıldı.`,
+                  isDead: false
+                });
+                broadcastLobbyState(c.room);
+                sendRoomPlayersUpdate(c.room);
+                c.room = null;
+                c.player = null;
+              }
+              if (s.readyState === WebSocket.OPEN) {
+                s.send(JSON.stringify({
+                  type: 'KICKED_FROM_ROOM',
+                  reason: 'Yönetici (Admin) tarafından oyundan atıldınız.'
+                }));
+              }
+              break;
+            }
+          }
+          broadcastAdminStats();
+          break;
+        }
+
+        case 'ADMIN_BAN_PLAYER': {
+          if (!clientInfo.isAdmin) return;
+          const targetIp = (msg.ip || '').trim();
+          const targetUsername = (msg.username || '').trim().toLowerCase();
+          const targetConnId = msg.connId;
+          const reason = msg.reason || 'Yönetici tarafından yasaklandı';
+
+          const bansData = loadBans();
+
+          if (targetIp && !bansData.bannedIps.includes(targetIp)) {
+            bansData.bannedIps.push(targetIp);
+          }
+          if (targetUsername && !bansData.bannedUsers.includes(targetUsername)) {
+            bansData.bannedUsers.push(targetUsername);
+          }
+
+          bansData.bannedRecords.push({
+            ip: targetIp || '-',
+            username: targetUsername || '-',
+            reason: reason,
+            bannedBy: 'ensar',
+            date: new Date().toLocaleString('tr-TR')
+          });
+          saveBans(bansData);
+
+          for (const [s, c] of connectedSockets) {
+            const matchIp = targetIp && c.ip === targetIp;
+            const matchUser = targetUsername && c.user && c.user.username.toLowerCase() === targetUsername;
+            const matchConn = targetConnId && c.connId === targetConnId;
+
+            if (matchIp || matchUser || matchConn) {
+              if (c.room && c.player) {
+                c.room.players.delete(c.player.id);
+                broadcastLobbyState(c.room);
+                sendRoomPlayersUpdate(c.room);
+              }
+              if (s.readyState === WebSocket.OPEN) {
+                s.send(JSON.stringify({
+                  type: 'BANNED',
+                  reason: 'Yönetici (Admin) tarafından siteden kalıcı olarak yasaklandınız!'
+                }));
+                try { s.close(); } catch(e) {}
+              }
+              connectedSockets.delete(s);
+            }
+          }
+
+          broadcastAdminStats();
+          break;
+        }
+
+        case 'ADMIN_UNBAN': {
+          if (!clientInfo.isAdmin) return;
+          const target = (msg.target || '').trim();
+          const bansData = loadBans();
+
+          bansData.bannedIps = bansData.bannedIps.filter(ip => ip !== target);
+          bansData.bannedUsers = bansData.bannedUsers.filter(u => u !== target.toLowerCase());
+          bansData.bannedRecords = bansData.bannedRecords.filter(r => r.ip !== target && r.username.toLowerCase() !== target.toLowerCase());
+          saveBans(bansData);
+
+          broadcastAdminStats();
+          break;
+        }
+
+        case 'ADMIN_CLOSE_ROOM': {
+          if (!clientInfo.isAdmin) return;
+          const code = (msg.roomCode || '').toUpperCase().trim();
+          const targetRoom = rooms.get(code);
+
+          if (targetRoom) {
+            for (const [_, p] of targetRoom.players) {
+              if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+                p.ws.send(JSON.stringify({
+                  type: 'ROOM_CLOSED_BY_ADMIN',
+                  message: 'Bu oda yönetici tarafından kapatıldı.'
+                }));
+              }
+            }
+            rooms.delete(code);
+            broadcastAdminStats();
+          }
+          break;
+        }
+
+        // ================= ROOM HOST KICK / BAN HANDLERS =================
+        case 'HOST_KICK_PLAYER': {
+          if (!currentRoom || !currentPlayer) return;
+          const isHost = (currentRoom.hostId === currentPlayer.id);
+          const isAdmin = !!clientInfo.isAdmin;
+          if (!isHost && !isAdmin) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Yalnızca oda sahibi oyuncu atabilir!' }));
+            break;
+          }
+
+          const targetPlayerId = msg.targetPlayerId;
+          if (targetPlayerId === currentPlayer.id) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Kendinizi odadan atamazsınız!' }));
+            break;
+          }
+
+          const targetPlayer = currentRoom.players.get(targetPlayerId);
+          if (targetPlayer) {
+            currentRoom.players.delete(targetPlayerId);
+            if (targetPlayer.ws && targetPlayer.ws.readyState === WebSocket.OPEN) {
+              targetPlayer.ws.send(JSON.stringify({
+                type: 'KICKED_FROM_ROOM',
+                message: 'Oda sahibi tarafından odadan atıldınız.'
+              }));
+            }
+            broadcast(currentRoom, 'CHAT_MESSAGE', {
+              sender: 'SİSTEM',
+              color: 'White',
+              text: `${targetPlayer.name} oda sahibi tarafından odadan atıldı.`,
+              isDead: false
+            });
+            broadcastLobbyState(currentRoom);
+            sendRoomPlayersUpdate(currentRoom);
+          }
+          break;
+        }
+
+        case 'HOST_BAN_PLAYER': {
+          if (!currentRoom || !currentPlayer) return;
+          const isHost = (currentRoom.hostId === currentPlayer.id);
+          const isAdmin = !!clientInfo.isAdmin;
+          if (!isHost && !isAdmin) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Yalnızca oda sahibi oyuncu yasaklayabilir!' }));
+            break;
+          }
+
+          const targetPlayerId = msg.targetPlayerId;
+          if (targetPlayerId === currentPlayer.id) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Kendinizi yasaklayamazsınız!' }));
+            break;
+          }
+
+          const targetPlayer = currentRoom.players.get(targetPlayerId);
+          if (targetPlayer) {
+            if (!currentRoom.bannedPlayerIds) currentRoom.bannedPlayerIds = new Set();
+            if (!currentRoom.bannedIps) currentRoom.bannedIps = new Set();
+
+            currentRoom.bannedPlayerIds.add(targetPlayer.id);
+            if (targetPlayer.connId) currentRoom.bannedPlayerIds.add(targetPlayer.connId);
+            if (targetPlayer.registeredUsername) currentRoom.bannedPlayerIds.add(targetPlayer.registeredUsername.toLowerCase());
+            if (targetPlayer.ip) currentRoom.bannedIps.add(targetPlayer.ip);
+
+            currentRoom.players.delete(targetPlayerId);
+            if (targetPlayer.ws && targetPlayer.ws.readyState === WebSocket.OPEN) {
+              targetPlayer.ws.send(JSON.stringify({
+                type: 'KICKED_FROM_ROOM',
+                message: 'Oda sahibi bu odaya girişinizi yasakladı!'
+              }));
+            }
+            broadcast(currentRoom, 'CHAT_MESSAGE', {
+              sender: 'SİSTEM',
+              color: 'White',
+              text: `${targetPlayer.name} oda sahibi tarafından odadan yasaklandı.`,
+              isDead: false
+            });
+            broadcastLobbyState(currentRoom);
+            sendRoomPlayersUpdate(currentRoom);
+          }
+          break;
+        }
+
+        case 'GET_ROOM_PLAYERS': {
+          if (currentRoom) {
+            sendRoomPlayersUpdate(currentRoom, ws);
+          }
+          break;
+        }
+
       }
     } catch (e) {
       console.error('WebSocket message parsing error:', e);
@@ -969,6 +1598,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    connectedSockets.delete(ws);
+    broadcastAdminStats();
     if (currentPlayer && currentRoom) {
       currentRoom.players.delete(currentPlayer.id);
       if (currentRoom.hostId === currentPlayer.id) {

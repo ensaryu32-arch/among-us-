@@ -44,6 +44,15 @@
 
   // State
   let ws = null;
+
+  // ==================== AUTH & ADMIN DASHBOARD CLIENT STATE ====================
+  let currentUser = null;
+  let isAdmin = false;
+  let adminStatsInterval = null;
+  let currentRoomHostId = null;
+  let currentRoomPlayersData = [];
+  // =============================================================================
+
   let localPlayer = {
     id: null,
     name: 'Player',
@@ -350,6 +359,22 @@
 
     ws.onopen = () => {
       console.log('Connected to Among Us Server');
+
+      // Auto login if credentials exist in localStorage
+      const savedAuth = localStorage.getItem('amongus_auth_creds');
+      if (savedAuth) {
+        try {
+          const creds = JSON.parse(savedAuth);
+          if (creds && creds.username && creds.password) {
+            ws.send(JSON.stringify({
+              type: 'LOGIN',
+              username: creds.username,
+              password: creds.password
+            }));
+          }
+        } catch(e) {}
+      }
+
     };
 
     ws.onmessage = (event) => {
@@ -1189,6 +1214,197 @@
   // ================= 5. SERVER MESSAGES DISPATCHER =================
   function handleServerMessage(msg) {
     switch (msg.type) {
+      
+      // ================= AUTH & ADMIN WS MESSAGE HANDLERS =================
+      case 'AUTH_SUCCESS': {
+        currentUser = msg.user;
+        isAdmin = !!msg.isAdmin;
+        console.log('Auth success! User:', currentUser, 'isAdmin:', isAdmin);
+
+        const authBtnLabel = document.getElementById('auth-btn-label');
+        if (authBtnLabel) {
+          authBtnLabel.textContent = isAdmin ? '👑 ' + currentUser.username : '👤 ' + currentUser.username;
+        }
+
+        const adminBtn = document.getElementById('btn-open-admin-panel');
+        if (adminBtn) {
+          if (isAdmin) {
+            adminBtn.classList.remove('hidden');
+            adminBtn.style.display = 'flex';
+          } else {
+            adminBtn.classList.add('hidden');
+            adminBtn.style.display = 'none';
+          }
+        }
+
+        const hudAdminBtn = document.getElementById('btn-hud-admin');
+        if (hudAdminBtn) {
+          if (isAdmin) {
+            hudAdminBtn.classList.remove('hidden');
+            hudAdminBtn.style.display = 'flex';
+          } else {
+            hudAdminBtn.classList.add('hidden');
+            hudAdminBtn.style.display = 'none';
+          }
+        }
+
+        // If player name input is default, update with username
+        const nameInput = document.getElementById('player-name-input');
+        if (nameInput && (!nameInput.value || nameInput.value === 'Player' || nameInput.value === 'Crewmate')) {
+          nameInput.value = currentUser.username;
+          localStorage.setItem('among_us_saved_name', currentUser.username);
+        }
+
+        // Update auth modal logged-in box
+        const loggedInBox = document.getElementById('auth-logged-in-box');
+        const authForm = document.getElementById('auth-form');
+        const userNameEl = document.getElementById('auth-user-name');
+        const userRoleBadge = document.getElementById('auth-user-role-badge');
+        if (loggedInBox && authForm && userNameEl && userRoleBadge) {
+          loggedInBox.classList.remove('hidden');
+          loggedInBox.style.display = 'flex';
+          authForm.classList.add('hidden');
+          authForm.style.display = 'none';
+          userNameEl.textContent = currentUser.username;
+          if (isAdmin) {
+            userRoleBadge.textContent = '👑 YÖNETİCİ (ADMIN)';
+            userRoleBadge.className = 'auth-badge-admin';
+          } else {
+            userRoleBadge.textContent = '🧑‍🚀 OYUNCU';
+            userRoleBadge.className = 'auth-badge-admin';
+            userRoleBadge.style.background = '#0284c7';
+            userRoleBadge.style.borderColor = '#38bdf8';
+          }
+        }
+
+        // Close modal after brief moment if user just logged in
+        setTimeout(() => {
+          const authModal = document.getElementById('auth-modal');
+          if (authModal && !authModal.classList.contains('hidden')) {
+            authModal.classList.add('hidden');
+            authModal.style.display = 'none';
+          }
+        }, 600);
+        break;
+      }
+
+      case 'AUTH_ERROR': {
+        const errEl = document.getElementById('auth-error-msg');
+        if (errEl) {
+          errEl.textContent = msg.message || 'Giriş hatası!';
+          errEl.classList.remove('hidden');
+          errEl.style.display = 'block';
+        } else {
+          alert(msg.message);
+        }
+        break;
+      }
+
+      case 'AUTH_LOGOUT': {
+        currentUser = null;
+        isAdmin = false;
+        localStorage.removeItem('amongus_auth_creds');
+        const authBtnLabel = document.getElementById('auth-btn-label');
+        if (authBtnLabel) authBtnLabel.textContent = 'Giriş Yap / Kayıt Ol';
+
+        const adminBtn = document.getElementById('btn-open-admin-panel');
+        if (adminBtn) {
+          adminBtn.classList.add('hidden');
+          adminBtn.style.display = 'none';
+        }
+        const hudAdminBtn = document.getElementById('btn-hud-admin');
+        if (hudAdminBtn) {
+          hudAdminBtn.classList.add('hidden');
+          hudAdminBtn.style.display = 'none';
+        }
+
+        const loggedInBox = document.getElementById('auth-logged-in-box');
+        const authForm = document.getElementById('auth-form');
+        if (loggedInBox && authForm) {
+          loggedInBox.classList.add('hidden');
+          loggedInBox.style.display = 'none';
+          authForm.classList.remove('hidden');
+          authForm.style.display = 'block';
+        }
+        if (window.closeAdminPanel) window.closeAdminPanel();
+        break;
+      }
+
+      case 'ADMIN_STATS_UPDATE': {
+        if (!isAdmin) break;
+        const stats = msg.stats;
+        if (!stats) break;
+
+        // Counters
+        const elOnline = document.getElementById('admin-stat-online');
+        const elRooms = document.getElementById('admin-stat-rooms');
+        const elUsers = document.getElementById('admin-stat-users');
+        const elBans = document.getElementById('admin-stat-bans');
+        const countRooms = document.getElementById('admin-tab-rooms-count');
+        const countClients = document.getElementById('admin-tab-clients-count');
+        const countBans = document.getElementById('admin-tab-bans-count');
+
+        if (elOnline) elOnline.textContent = stats.onlineCount || 0;
+        if (elRooms) elRooms.textContent = stats.roomCount || 0;
+        if (elUsers) elUsers.textContent = stats.registeredCount || 0;
+        if (elBans) elBans.textContent = stats.bannedCount || 0;
+        if (countRooms) countRooms.textContent = (stats.rooms || []).length;
+        if (countClients) countClients.textContent = (stats.clients || []).length;
+        if (countBans) countBans.textContent = (stats.bans || []).length;
+
+        if (window.renderAdminRooms) window.renderAdminRooms(stats.rooms || []);
+        if (window.renderAdminClients) window.renderAdminClients(stats.clients || []);
+        if (window.renderAdminBans) window.renderAdminBans(stats.bans || []);
+        break;
+      }
+
+      case 'KICKED_FROM_ROOM': {
+        const reason = msg.message || msg.reason || 'Odadan atıldınız.';
+        alert('UYARI: ' + reason);
+        // Reset and return to menu
+        if (window.returnToMainMenu) {
+          window.returnToMainMenu();
+        } else {
+          location.reload();
+        }
+        break;
+      }
+
+      case 'ROOM_CLOSED_BY_ADMIN': {
+        alert('BİLGİ: ' + (msg.message || 'Bu oda yönetici tarafından kapatıldı.'));
+        if (window.returnToMainMenu) {
+          window.returnToMainMenu();
+        } else {
+          location.reload();
+        }
+        break;
+      }
+
+      case 'BANNED': {
+        const reason = msg.reason || 'Bu sunucudan kalıcı olarak yasaklandınız!';
+        localStorage.removeItem('amongus_auth_creds');
+        alert('KIRMIZI ALARM - BANLANDINIZ!\\n\\n' + reason);
+        document.body.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#000; color:#ef4444; font-family:sans-serif; text-align:center; padding:20px;">
+            <div style="font-size:72px; margin-bottom:20px;">🚫</div>
+            <h1 style="font-size:32px; font-weight:900; margin-bottom:12px;">SİTEDEN YASAKLANDINIZ (BANNED)</h1>
+            <p style="font-size:18px; color:#fca5a5; max-width:600px; line-height:1.5;">${escapeHtml(reason)}</p>
+          </div>
+        `;
+        break;
+      }
+
+      case 'ROOM_PLAYERS_UPDATE': {
+        currentRoomHostId = msg.hostId;
+        currentRoomPlayersData = msg.players || [];
+        const countSpan = document.getElementById('chat-tab-player-count');
+        if (countSpan) countSpan.textContent = currentRoomPlayersData.length;
+        if (window.renderRoomPlayersList) {
+          window.renderRoomPlayersList(currentRoomPlayersData, currentRoomHostId);
+        }
+        break;
+      }
+
       case 'ERROR': {
         alert(msg.message);
         break;
@@ -5975,3 +6191,483 @@
   });
 
 })();
+
+
+  // =========================================================================
+  // AUTHENTICATION & ADMIN DASHBOARD CLIENT FUNCTIONS
+  // =========================================================================
+
+  let currentAuthTab = 'login';
+  window.openAuthModal = function() {
+    const modal = document.getElementById('auth-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    const errEl = document.getElementById('auth-error-msg');
+    if (errEl) { errEl.classList.add('hidden'); errEl.style.display = 'none'; }
+
+    const loggedInBox = document.getElementById('auth-logged-in-box');
+    const authForm = document.getElementById('auth-form');
+    if (currentUser && loggedInBox && authForm) {
+      loggedInBox.classList.remove('hidden');
+      loggedInBox.style.display = 'flex';
+      authForm.classList.add('hidden');
+      authForm.style.display = 'none';
+      const uName = document.getElementById('auth-user-name');
+      const uRole = document.getElementById('auth-user-role-badge');
+      if (uName) uName.textContent = currentUser.username;
+      if (uRole) {
+        uRole.textContent = isAdmin ? '👑 YÖNETİCİ (ADMIN)' : '🧑‍🚀 OYUNCU';
+      }
+    } else if (loggedInBox && authForm) {
+      loggedInBox.classList.add('hidden');
+      loggedInBox.style.display = 'none';
+      authForm.classList.remove('hidden');
+      authForm.style.display = 'block';
+    }
+  };
+
+  window.closeAuthModal = function() {
+    const modal = document.getElementById('auth-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+  };
+
+  window.switchAuthTab = function(tab) {
+    currentAuthTab = tab;
+    const tabLogin = document.getElementById('auth-tab-login');
+    const tabReg = document.getElementById('auth-tab-register');
+    const submitBtn = document.getElementById('btn-auth-submit');
+    const errEl = document.getElementById('auth-error-msg');
+    if (errEl) { errEl.classList.add('hidden'); errEl.style.display = 'none'; }
+
+    if (tab === 'login') {
+      if (tabLogin) tabLogin.classList.add('active');
+      if (tabReg) tabReg.classList.remove('active');
+      if (submitBtn) submitBtn.textContent = 'GİRİŞ YAP';
+    } else {
+      if (tabLogin) tabLogin.classList.remove('active');
+      if (tabReg) tabReg.classList.add('active');
+      if (submitBtn) submitBtn.textContent = 'KAYIT OL VE GİRİŞ YAP';
+    }
+  };
+
+  window.handleAuthSubmit = function(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const uInput = document.getElementById('auth-username');
+    const pInput = document.getElementById('auth-password');
+    const username = uInput ? uInput.value.trim() : '';
+    const password = pInput ? pInput.value.trim() : '';
+
+    if (!username || !password) {
+      alert('Kullanıcı adı ve şifre gereklidir!');
+      return;
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      alert('Sunucuya bağlanılamadı. Lütfen birkaç saniye sonra tekrar deneyin.');
+      return;
+    }
+
+    // Save for auto login
+    localStorage.setItem('amongus_auth_creds', JSON.stringify({ username, password }));
+
+    if (currentAuthTab === 'register') {
+      ws.send(JSON.stringify({ type: 'REGISTER', username, password }));
+    } else {
+      ws.send(JSON.stringify({ type: 'LOGIN', username, password }));
+    }
+  };
+
+  window.logoutUser = function() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'LOGOUT' }));
+    }
+    localStorage.removeItem('amongus_auth_creds');
+    currentUser = null;
+    isAdmin = false;
+    window.closeAuthModal();
+  };
+
+  // ================= ADMIN PANEL METHODS =================
+  window.openAdminPanel = function() {
+    if (!isAdmin) {
+      alert('Yalnızca yetkili yöneticiler (admin) bu paneli açabilir!\\n(Giriş yapmak için ana menüdeki Astronot Hesabı butonunu kullanın)');
+      window.openAuthModal();
+      return;
+    }
+
+    const modal = document.getElementById('admin-panel-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    window.refreshAdminStats();
+    if (adminStatsInterval) clearInterval(adminStatsInterval);
+    adminStatsInterval = setInterval(() => {
+      window.refreshAdminStats();
+    }, 2000);
+  };
+
+  window.closeAdminPanel = function() {
+    const modal = document.getElementById('admin-panel-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+    if (adminStatsInterval) {
+      clearInterval(adminStatsInterval);
+      adminStatsInterval = null;
+    }
+  };
+
+  window.refreshAdminStats = function() {
+    if (ws && ws.readyState === WebSocket.OPEN && isAdmin) {
+      ws.send(JSON.stringify({ type: 'ADMIN_GET_STATS' }));
+    }
+  };
+
+  window.switchAdminTab = function(tabName) {
+    const tabs = ['rooms', 'clients', 'bans', 'quickban'];
+    tabs.forEach(t => {
+      const btn = document.getElementById('admin-tab-btn-' + t);
+      const view = document.getElementById('admin-tab-content-' + t);
+      if (btn) {
+        if (t === tabName) btn.classList.add('active');
+        else btn.classList.remove('active');
+      }
+      if (view) {
+        if (t === tabName) {
+          view.classList.remove('hidden');
+          view.style.display = 'block';
+        } else {
+          view.classList.add('hidden');
+          view.style.display = 'none';
+        }
+      }
+    });
+  };
+
+  window.renderAdminRooms = function(rooms) {
+    const container = document.getElementById('admin-rooms-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!rooms || rooms.length === 0) {
+      container.innerHTML = '<div style="color:#94a3b8; text-align:center; grid-column: 1/-1; padding:40px; font-size:15px;">Şu anda aktif hiçbir oda bulunmuyor.</div>';
+      return;
+    }
+
+    rooms.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'admin-room-card';
+
+      let stateClass = 'state-lobby';
+      let stateTr = 'LOBİ';
+      if (r.state === 'PLAYING') { stateClass = 'state-playing'; stateTr = 'OYUNDA'; }
+      else if (r.state === 'MEETING') { stateClass = 'state-meeting'; stateTr = 'TOPLANTI/OYLAMA'; }
+
+      let playersHtml = '';
+      if (r.players && r.players.length > 0) {
+        r.players.forEach(p => {
+          const roleClass = p.isImpostor ? 'tag-impostor' : 'tag-crewmate';
+          const roleText = p.isImpostor ? 'IMPOSTOR' : 'CREWMATE';
+          const regText = p.username ? `@${escapeHtml(p.username)}` : 'Misafir';
+          const aliveStatus = p.isAlive ? '' : ' 💀';
+          const dummyTag = p.isDummy ? ' (Bot)' : '';
+
+          playersHtml += `
+            <div class="admin-room-player-item">
+              <div class="admin-player-left-info">
+                <span class="admin-player-color-circle" style="background:${p.color.toLowerCase()};"></span>
+                <b>${escapeHtml(p.name)}${dummyTag}${aliveStatus}</b>
+                <span class="admin-player-tag-role ${roleClass}">${roleText}</span>
+                <span style="color:#64748b; font-size:11px;">[${regText}]</span>
+              </div>
+              <div style="display:flex; gap:4px;">
+                ${!p.isDummy ? `
+                  <button class="btn-kick-warning" onclick="window.adminKickPlayer('${p.connId || p.id}')" title="Odadan At">👢 At</button>
+                  <button class="btn-ban-danger" onclick="window.adminBanPlayer('${p.ip}', '${p.username || p.name}')" title="IP / Kullanıcı Banla">🚫 Banla</button>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        });
+      } else {
+        playersHtml = '<div style="color:#64748b; font-size:12px; padding:6px 0;">Oda boş.</div>';
+      }
+
+      card.innerHTML = `
+        <div class="admin-room-header">
+          <span class="admin-room-code-tag">${escapeHtml(r.code)} ${r.isFreeplay ? '<span style="font-size:10px; color:#a855f7;">[SERBEST]</span>' : ''}</span>
+          <span class="admin-room-state-badge ${stateClass}">${stateTr}</span>
+        </div>
+        <div class="admin-room-info-row">
+          <span>Oda Kurucusu (Host):</span>
+          <b style="color:#f8fafc;">${escapeHtml(r.hostName)}</b>
+        </div>
+        <div class="admin-room-info-row">
+          <span>Oyuncu Sayısı:</span>
+          <b>${r.playerCount} / ${r.maxPlayers}</b>
+        </div>
+        <div class="admin-room-players-box">
+          <div style="font-size:11px; color:#94a3b8; font-weight:800; margin-bottom:6px; text-transform:uppercase;">Oyuncu Listesi & Rolleri</div>
+          ${playersHtml}
+        </div>
+        <div class="admin-room-actions-bar">
+          <button class="btn-room-close" onclick="window.adminCloseRoom('${r.code}')" style="width:100%;">💥 Odayı Kapat ve Dağıt</button>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  };
+
+  window.renderAdminClients = function(clients) {
+    const tbody = document.getElementById('admin-clients-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!clients || clients.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:30px;">Şu anda bağlı hiçbir istemci yok.</td></tr>';
+      return;
+    }
+
+    clients.forEach(c => {
+      const tr = document.createElement('tr');
+      const isRegBadge = c.isRegistered
+        ? `<span style="color:#38bdf8; font-weight:800;">@${escapeHtml(c.username)} ${c.isAdmin ? '👑' : ''}</span>`
+        : `<span style="color:#94a3b8;">Misafir</span>`;
+
+      tr.innerHTML = `
+        <td><code style="color:#fde047; font-size:12px;">${escapeHtml(c.ip || 'Bilinmiyor')}</code></td>
+        <td>${isRegBadge}</td>
+        <td><b>${escapeHtml(c.playerName || 'Henüz İsimsiz')}</b></td>
+        <td><span style="background:rgba(255,255,255,0.08); padding:3px 8px; border-radius:6px; font-size:11px;">${escapeHtml(c.status || 'Ana Menü')}</span></td>
+        <td><span style="color:#22c55e; font-weight:700;">🟢 Çevrimiçi</span></td>
+        <td>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-kick-warning" onclick="window.adminKickPlayer('${c.connId}')">👢 At</button>
+            <button class="btn-ban-danger" onclick="window.adminBanPlayer('${c.ip}', '${c.username || ''}')">🚫 Banla</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  };
+
+  window.renderAdminBans = function(bans) {
+    const tbody = document.getElementById('admin-bans-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!bans || bans.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:30px;">Hiçbir ban kaydı bulunmuyor.</td></tr>';
+      return;
+    }
+
+    bans.forEach(b => {
+      const tr = document.createElement('tr');
+      const targetStr = (b.ip && b.ip !== '-') ? b.ip : b.username;
+      tr.innerHTML = `
+        <td>
+          <b style="color:#ef4444;">${escapeHtml(targetStr || '-')}</b>
+          ${b.username && b.username !== '-' ? `<span style="color:#94a3b8; font-size:11px; margin-left:6px;">(@${escapeHtml(b.username)})</span>` : ''}
+        </td>
+        <td>${escapeHtml(b.reason || 'Yönetici kararı')}</td>
+        <td><span style="color:#fbbf24;">${escapeHtml(b.bannedBy || 'ensar')}</span></td>
+        <td style="color:#94a3b8; font-size:12px;">${escapeHtml(b.date || '-')}</td>
+        <td>
+          <button class="btn-unban-success" onclick="window.adminUnban('${targetStr}')">✅ Banı Kaldır</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  };
+
+  window.adminKickPlayer = function(targetId) {
+    if (!isAdmin) return;
+    if (!confirm('Bu kullanıcıyı oyundan/sunucudan atmak istediğinize emin misiniz?')) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ADMIN_KICK_PLAYER', targetId: targetId }));
+    }
+  };
+
+  window.adminBanPlayer = function(ip, username) {
+    if (!isAdmin) return;
+    const reason = prompt('Yasaklama (Ban) sebebini girin:', 'Kurallara uymama / Hile / Küfür');
+    if (reason === null) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'ADMIN_BAN_PLAYER',
+        ip: ip || '',
+        username: username || '',
+        reason: reason
+      }));
+    }
+  };
+
+  window.adminUnban = function(target) {
+    if (!isAdmin) return;
+    if (!confirm(`"${target}" yasağını kaldırmak istediğinize emin misiniz?`)) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ADMIN_UNBAN', target: target }));
+    }
+  };
+
+  window.adminCloseRoom = function(roomCode) {
+    if (!isAdmin) return;
+    if (!confirm(`"${roomCode}" kodlu odayı kapatmak ve tüm oyuncuları dağıtmak istediğinize emin misiniz?`)) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ADMIN_CLOSE_ROOM', roomCode: roomCode }));
+    }
+  };
+
+  window.adminQuickBan = function() {
+    if (!isAdmin) return;
+    const ipInput = document.getElementById('quickban-ip');
+    const userInput = document.getElementById('quickban-user');
+    const reasonInput = document.getElementById('quickban-reason');
+
+    const ip = ipInput ? ipInput.value.trim() : '';
+    const username = userInput ? userInput.value.trim() : '';
+    const reason = (reasonInput && reasonInput.value.trim()) || 'Yönetici tarafından yasaklandı';
+
+    if (!ip && !username) {
+      alert('Lütfen en az bir IP adresi veya Kullanıcı Adı girin!');
+      return;
+    }
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'ADMIN_BAN_PLAYER',
+        ip: ip,
+        username: username,
+        reason: reason
+      }));
+      if (ipInput) ipInput.value = '';
+      if (userInput) userInput.value = '';
+      alert('Yasaklama başarıyla işlendi ve hedef siteden atıldı!');
+      window.switchAdminTab('bans');
+    }
+  };
+
+  // ================= ROOM HOST KICK / BAN CLIENT METHODS =================
+  window.switchChatDrawerTab = function(tab) {
+    const btnChat = document.getElementById('tab-btn-chat');
+    const btnPlayers = document.getElementById('tab-btn-players');
+    const contentChat = document.getElementById('chat-tab-content-chat');
+    const contentPlayers = document.getElementById('chat-tab-content-players');
+
+    if (tab === 'players') {
+      if (btnChat) btnChat.classList.remove('active');
+      if (btnPlayers) btnPlayers.classList.add('active');
+      if (contentChat) { contentChat.classList.add('hidden'); contentChat.style.display = 'none'; }
+      if (contentPlayers) { contentPlayers.classList.remove('hidden'); contentPlayers.style.display = 'block'; }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'GET_ROOM_PLAYERS' }));
+      }
+    } else {
+      if (btnChat) btnChat.classList.add('active');
+      if (btnPlayers) btnPlayers.classList.remove('active');
+      if (contentChat) { contentChat.classList.remove('hidden'); contentChat.style.display = 'block'; }
+      if (contentPlayers) { contentPlayers.classList.add('hidden'); contentPlayers.style.display = 'none'; }
+    }
+  };
+
+  window.openRoomPlayersDrawer = function() {
+    const drawer = document.getElementById('meeting-chat-drawer');
+    if (drawer) {
+      drawer.classList.remove('hidden');
+      window.switchChatDrawerTab('players');
+    }
+  };
+
+  window.renderRoomPlayersList = function(playersList, hostId) {
+    const container = document.getElementById('chat-players-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const isLocalHost = (localPlayer && localPlayer.id === hostId);
+    const canModerate = isLocalHost || isAdmin;
+
+    const hostBadge = document.getElementById('chat-players-host-badge');
+    if (hostBadge) {
+      hostBadge.textContent = canModerate ? '👑 Siz Yetkilisiniz (Kick/Ban Açık)' : 'Oda Sahibi: Kick/Ban Yetkisi';
+    }
+
+    if (!playersList || playersList.length === 0) {
+      container.innerHTML = '<div style="color:#94a3b8; padding:20px; text-align:center;">Odada kimse yok.</div>';
+      return;
+    }
+
+    playersList.forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'chat-player-item';
+
+      const isSelf = (localPlayer && p.id === localPlayer.id);
+      const isTargetHost = (p.id === hostId);
+      const colorVal = (p.color || 'red').toLowerCase();
+
+      let actionsHtml = '';
+      if (canModerate && !isSelf && !p.isDummy) {
+        actionsHtml = `
+          <div class="chat-player-actions">
+            <button class="btn-host-kick" onclick="window.hostKickPlayer('${p.id}', '${escapeHtml(p.name)}')">👢 At</button>
+            <button class="btn-host-ban" onclick="window.hostBanPlayer('${p.id}', '${escapeHtml(p.name)}')">🚫 Banla</button>
+          </div>
+        `;
+      }
+
+      item.innerHTML = `
+        <div class="chat-player-info">
+          <span class="chat-player-color-dot" style="background:${colorVal};"></span>
+          <span class="chat-player-name">${escapeHtml(p.name)} ${isSelf ? '<span style="color:#38bdf8; font-size:12px;">(Sen)</span>' : ''} ${isTargetHost ? '👑' : ''}</span>
+        </div>
+        ${actionsHtml}
+      `;
+      container.appendChild(item);
+    });
+  };
+
+  window.hostKickPlayer = function(targetId, targetName) {
+    if (!confirm(`"${targetName}" adlı oyuncuyu odadan atmak istediğinize emin misiniz?`)) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'HOST_KICK_PLAYER',
+        targetPlayerId: targetId
+      }));
+    }
+  };
+
+  window.hostBanPlayer = function(targetId, targetName) {
+    if (!confirm(`DİKKAT: "${targetName}" adlı oyuncunun bu odaya girişini YASAKLAMAK (Banlamak) istediğinize emin misiniz?\nBu odaya bir daha katılamayacaktır.`)) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'HOST_BAN_PLAYER',
+        targetPlayerId: targetId
+      }));
+    }
+  };
+
+  window.returnToMainMenu = function() {
+    // Hide in-game HUDs
+    const huds = ['top-hud', 'top-right-hud', 'action-hud', 'dropship-hud', 'meeting-chat-drawer', 'emergency-meeting-modal', 'report-splash-modal', 'ejection-screen', 'game-over-modal'];
+    huds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.add('hidden'); el.style.display = 'none'; }
+    });
+
+    const menu = document.getElementById('main-menu-modal');
+    if (menu) {
+      menu.classList.remove('hidden');
+      menu.style.display = 'flex';
+    }
+
+    gameState = 'MENU';
+    currentRoomCode = null;
+    players.clear();
+    deadBodies = [];
+  };

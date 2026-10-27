@@ -44,6 +44,7 @@
 
     <!-- Top Right Controls -->
     <div id="top-right-hud" class="hidden">
+      <button id="btn-hud-admin" class="hud-icon-btn hidden" onclick="window.openAdminPanel()" title="Admin Paneli" style="display: none; font-size: 13px; width: auto; padding: 0 12px; gap: 4px; border-radius: 20px; font-weight: 900; background: linear-gradient(135deg, #e11d48, #f59e0b); color: #fff; border: 1px solid #fde047; box-shadow: 0 0 12px rgba(245,158,11,0.6);">👑 ADMİN</button>
       <button id="btn-school-disguise" class="hud-icon-btn" onclick="window.toggleSchoolDisguise()" title="EBA / MEB Kamuflajı (F9)" style="font-size: 13px; width: auto; padding: 0 12px; gap: 4px; border-radius: 20px; font-weight: bold; background: rgba(225, 29, 72, 0.9); color: #fff; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.4);">🎓 EBA (F9)</button>
       <button id="btn-minimap" class="hud-icon-btn" title="Map (M)">
         <img src="assets/Images/UI/map_button.png" alt="Map">
@@ -89,8 +90,14 @@
 
   <!-- ================= 1. AUTHENTIC AMONG US TITLE & MAIN MENU (3. FOTOĞRAFIN BİREBİR AYNISI) ================= -->
   <div id="main-menu-modal" class="main-menu-fullscreen">
-    <!-- EBA Disguise Quick Button in Menu -->
-    <div style="position: absolute; top: 18px; right: 20px; z-index: 100;">
+    <!-- Top Right Action Controls in Menu -->
+    <div style="position: absolute; top: 18px; right: 20px; z-index: 100; display: flex; align-items: center; gap: 10px;">
+      <button id="btn-open-auth" onclick="window.openAuthModal()" title="Kullanıcı Girişi / Kayıt Ol" style="display: flex; align-items: center; gap: 6px; background: rgba(30, 41, 59, 0.9); backdrop-filter: blur(8px); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.6); border-radius: 20px; padding: 7px 16px; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.4); transition: all 0.2s;">
+        <span style="font-size: 16px;">👤</span> <span id="auth-btn-label">Giriş Yap / Kayıt Ol</span>
+      </button>
+      <button id="btn-open-admin-panel" class="hidden" onclick="window.openAdminPanel()" title="Yönetici Paneli (Admin Dashboard)" style="display: none; align-items: center; gap: 6px; background: linear-gradient(135deg, #e11d48, #d97706); color: #fff; border: 1px solid #fde047; border-radius: 20px; padding: 7px 16px; font-weight: 900; font-size: 13px; cursor: pointer; box-shadow: 0 0 15px rgba(245, 158, 11, 0.7); animation: admin-pulse 2s infinite;">
+        <span style="font-size: 16px;">👑</span> <span>ADMİN PANELİ</span>
+      </button>
       <button onclick="window.toggleSchoolDisguise()" title="EBA / MEB Kamuflajı (F9)" style="display: flex; align-items: center; gap: 8px; background: rgba(225, 29, 72, 0.9); color: #fff; border: 1px solid rgba(255,255,255,0.4); border-radius: 20px; padding: 7px 16px; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.4); transition: transform 0.15s;">
         <span style="font-size: 16px;">🎓</span> <span>EBA KAMUFLAJI (F9)</span>
       </button>
@@ -340,6 +347,7 @@
   <div id="dropship-hud" class="hidden">
     <!-- Top Right Nav Buttons -->
     <div class="dropship-top-nav">
+      <button id="btn-dropship-manage-players" class="dropship-icon-btn" title="Oyuncuları Yönet (Kick/Ban)" onclick="window.openRoomPlayersDrawer()">👥</button>
       <button id="btn-dropship-chat" class="dropship-icon-btn" title="Chat">
         <span>💬</span>
         <span id="dropship-chat-badge" class="nav-badge hidden">1</span>
@@ -450,15 +458,29 @@
   <!-- Universal Crew Chat Drawer (Active in Dropship Lobby & Emergency Meetings) -->
   <div id="meeting-chat-drawer" class="meeting-chat-drawer hidden">
     <div class="chat-drawer-header">
-      <span class="chat-header-title">💬 CREW CHAT</span>
+      <div class="chat-drawer-tabs">
+        <button id="tab-btn-chat" class="chat-tab-btn active" onclick="window.switchChatDrawerTab('chat')">💬 SOHBET</button>
+        <button id="tab-btn-players" class="chat-tab-btn" onclick="window.switchChatDrawerTab('players')">👥 OYUNCULAR (<span id="chat-tab-player-count">0</span>)</button>
+      </div>
       <button id="btn-close-chat" class="btn-close-chat" title="Close Chat">✕</button>
     </div>
-    <div id="chat-messages" class="chat-messages">
-      <div class="chat-system-msg">Welcome to room chat! Say hi to your crewmates.</div>
+    <div id="chat-tab-content-chat" class="chat-tab-content">
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-system-msg">Welcome to room chat! Say hi to your crewmates.</div>
+      </div>
+      <div class="chat-input-bar">
+        <input type="text" id="chat-input" placeholder="Type message..." maxlength="100">
+        <button id="btn-send-chat">SEND</button>
+      </div>
     </div>
-    <div class="chat-input-bar">
-      <input type="text" id="chat-input" placeholder="Type message..." maxlength="100">
-      <button id="btn-send-chat">SEND</button>
+    <div id="chat-tab-content-players" class="chat-tab-content hidden" style="display: none;">
+      <div class="chat-players-subbar">
+        <span style="font-size: 13px; color: #94a3b8; font-weight: 700;">Oda Oyuncuları & Yönetim</span>
+        <span id="chat-players-host-badge" class="chat-players-role-hint">Oda Sahibi: Kick/Ban Yetkisi</span>
+      </div>
+      <div id="chat-players-list" class="chat-players-list">
+        <!-- Injected dynamically -->
+      </div>
     </div>
   </div>
 
@@ -1174,5 +1196,192 @@
   </div>
 
   <script src="game.js?v=3.0"></script>
+
+  <!-- ================= AUTHENTICATION MODAL (KAYIT OL / GİRİŞ YAP) ================= -->
+  <div id="auth-modal" class="modal-overlay hidden" style="display: none; z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(10px); background: rgba(5, 10, 20, 0.85);">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-header-title">
+          <span style="font-size: 24px;">🚀</span>
+          <span>ASTRONOT HESABI</span>
+        </div>
+        <button class="auth-close-btn" onclick="window.closeAuthModal()">✕</button>
+      </div>
+      <div class="auth-tab-buttons">
+        <button id="auth-tab-login" class="auth-tab active" onclick="window.switchAuthTab('login')">GİRİŞ YAP</button>
+        <button id="auth-tab-register" class="auth-tab" onclick="window.switchAuthTab('register')">KAYIT OL</button>
+      </div>
+      <div class="auth-body">
+        <div id="auth-info-banner" class="auth-info-banner">
+          Yönetici Hesabı: <b>ensar</b> / <b>Ensarbaba44</b>
+        </div>
+        <div id="auth-logged-in-box" class="auth-logged-in-box hidden" style="display: none;">
+          <div class="auth-user-avatar">🧑‍🚀</div>
+          <div class="auth-user-details">
+            <span id="auth-user-name" style="font-size: 18px; font-weight: 800; color: #38bdf8;">ensar</span>
+            <span id="auth-user-role-badge" class="auth-badge-admin">👑 YÖNETİCİ (ADMIN)</span>
+          </div>
+          <button class="auth-btn-secondary" onclick="window.logoutUser()" style="margin-top: 15px; width: 100%;">Çıkış Yap</button>
+        </div>
+        <form id="auth-form" onsubmit="window.handleAuthSubmit(event)">
+          <div class="auth-field">
+            <label>Kullanıcı Adı</label>
+            <input type="text" id="auth-username" placeholder="Kullanıcı adınız..." autocomplete="username" required maxlength="20">
+          </div>
+          <div class="auth-field">
+            <label>Şifre</label>
+            <input type="password" id="auth-password" placeholder="Şifreniz..." autocomplete="current-password" required minlength="4">
+          </div>
+          <div id="auth-error-msg" class="auth-error-msg hidden" style="display: none;"></div>
+          <button type="submit" id="btn-auth-submit" class="auth-submit-btn">GİRİŞ YAP</button>
+          <button type="button" class="auth-guest-btn" onclick="window.closeAuthModal()">Misafir Olarak Devam Et</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MERKEZİ YÖNETİCİ KONSOLU (ADMİN PANELİ) ================= -->
+  <div id="admin-panel-modal" class="modal-overlay hidden" style="display: none; z-index: 10001; align-items: center; justify-content: center; backdrop-filter: blur(12px); background: rgba(3, 7, 18, 0.92);">
+    <div class="admin-panel-container">
+      <div class="admin-panel-header">
+        <div class="admin-header-left">
+          <div class="admin-crown-icon">👑</div>
+          <div>
+            <h2 class="admin-title">MERKEZİ YÖNETİCİ KONSOLU (ADMİN)</h2>
+            <div class="admin-subtext">
+              <span class="live-dot"></span> Canlı İzleme & Sunucu Moderasyon Sistemi
+            </div>
+          </div>
+        </div>
+        <div class="admin-header-right">
+          <button class="admin-refresh-btn" onclick="window.refreshAdminStats()" title="Yenile">🔄 Yenile</button>
+          <button class="admin-close-btn" onclick="window.closeAdminPanel()" title="Kapat">✕</button>
+        </div>
+      </div>
+
+      <!-- KPI Stats Grid -->
+      <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+          <div class="stat-icon">🌐</div>
+          <div class="stat-info">
+            <div class="stat-value" id="admin-stat-online">0</div>
+            <div class="stat-label">Sitede Çevrimiçi</div>
+          </div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="stat-icon">🚀</div>
+          <div class="stat-info">
+            <div class="stat-value" id="admin-stat-rooms">0</div>
+            <div class="stat-label">Aktif Odalar</div>
+          </div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-info">
+            <div class="stat-value" id="admin-stat-users">0</div>
+            <div class="stat-label">Kayıtlı Kullanıcı</div>
+          </div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="stat-icon">🚫</div>
+          <div class="stat-info">
+            <div class="stat-value" id="admin-stat-bans">0</div>
+            <div class="stat-label">Yasaklı (Banlı)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tabs Navigation -->
+      <div class="admin-nav-tabs">
+        <button id="admin-tab-btn-rooms" class="admin-nav-btn active" onclick="window.switchAdminTab('rooms')">
+          🚀 AKTİF ODALAR & MAÇLAR (<span id="admin-tab-rooms-count">0</span>)
+        </button>
+        <button id="admin-tab-btn-clients" class="admin-nav-btn" onclick="window.switchAdminTab('clients')">
+          🌐 SİTEDEKİ HERKES (MİSAFİRLER DAHİL) (<span id="admin-tab-clients-count">0</span>)
+        </button>
+        <button id="admin-tab-btn-bans" class="admin-nav-btn" onclick="window.switchAdminTab('bans')">
+          🚫 BAN LİSTESİ & YASAKLILAR (<span id="admin-tab-bans-count">0</span>)
+        </button>
+        <button id="admin-tab-btn-quickban" class="admin-nav-btn" onclick="window.switchAdminTab('quickban')">
+          ⚡ HIZLI BAN
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="admin-content-area">
+        <!-- Tab 1: Rooms -->
+        <div id="admin-tab-content-rooms" class="admin-tab-view">
+          <div id="admin-rooms-list" class="admin-rooms-list">
+            <!-- Dynamic room cards -->
+          </div>
+        </div>
+
+        <!-- Tab 2: Global Clients -->
+        <div id="admin-tab-content-clients" class="admin-tab-view hidden" style="display: none;">
+          <div class="admin-table-wrapper">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>IP ADRESİ</th>
+                  <th>KULLANICI</th>
+                  <th>OYUNCU ADI</th>
+                  <th>BULUNDUĞU YER</th>
+                  <th>DURUM</th>
+                  <th>İŞLEMLER</th>
+                </tr>
+              </thead>
+              <tbody id="admin-clients-tbody">
+                <!-- Dynamic client rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 3: Bans -->
+        <div id="admin-tab-content-bans" class="admin-tab-view hidden" style="display: none;">
+          <div class="admin-table-wrapper">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>HEDEF IP / KULLANICI</th>
+                  <th>SEBEP</th>
+                  <th>BANLAYAN</th>
+                  <th>TARİH</th>
+                  <th>İŞLEM</th>
+                </tr>
+              </thead>
+              <tbody id="admin-bans-tbody">
+                <!-- Dynamic ban rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 4: Quick Ban -->
+        <div id="admin-tab-content-quickban" class="admin-tab-view hidden" style="display: none;">
+          <div class="admin-quickban-card">
+            <h3>⚡ Hızlı Kullanıcı veya IP Banla</h3>
+            <p style="color: #94a3b8; margin-bottom: 20px; font-size: 14px;">Kayıtlı veya kayıt olmayan herhangi bir misafiri IP veya kullanıcı adı ile anında siteden banlayabilirsiniz.</p>
+            <div class="quickban-form">
+              <div class="auth-field">
+                <label>IP Adresi (İsteğe bağlı)</label>
+                <input type="text" id="quickban-ip" placeholder="Örn: 192.168.1.1 veya 88.241...">
+              </div>
+              <div class="auth-field">
+                <label>Kullanıcı Adı (İsteğe bağlı)</label>
+                <input type="text" id="quickban-user" placeholder="Örn: troll_player">
+              </div>
+              <div class="auth-field">
+                <label>Yasaklama Sebebi</label>
+                <input type="text" id="quickban-reason" placeholder="Örn: Hile / Küfür / Kurallara Uymama" value="Kurallara uymama">
+              </div>
+              <button class="btn-ban-danger" onclick="window.adminQuickBan()" style="padding: 12px 24px; font-size: 15px; margin-top: 10px;">🚫 HEMEN BANLA VE SİTEDEN AT</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
