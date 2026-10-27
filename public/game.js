@@ -1410,6 +1410,11 @@
         break;
       }
 
+            case 'BANS_RESET_SUCCESS': {
+        alert('✓ ' + (msg.message || 'Tüm banlar sıfırlandı!'));
+        break;
+      }
+
       case 'ADMIN_STATS_UPDATE': {
         if (!isAdmin) break;
         const stats = msg.stats;
@@ -6607,6 +6612,14 @@
         fingerprint: fingerprint || '',
         reason: reason
       }));
+    }
+  };
+
+    window.adminResetAllBans = function() {
+    if (!isAdmin) return;
+    if (!confirm('DİKKAT: Sistemdeki TÜM banları ve oda yasaklarını sıfırlamak istediğinize emin misiniz?')) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ADMIN_RESET_ALL_BANS' }));
     }
   };
 

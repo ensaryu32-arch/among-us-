@@ -1530,6 +1530,31 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
+                case 'ADMIN_RESET_ALL_BANS': {
+          if (!clientInfo.isAdmin) return;
+          const cleanBans = {
+            bannedIps: [],
+            bannedUsers: [],
+            bannedDevices: [],
+            bannedFingerprints: [],
+            bannedRecords: [],
+            resetAt: new Date().toISOString()
+          };
+          saveBans(cleanBans);
+
+          for (const [code, r] of rooms) {
+            if (r.bannedPlayerIds) r.bannedPlayerIds.clear();
+            if (r.bannedIps) r.bannedIps.clear();
+          }
+
+          broadcastAdminStats();
+          ws.send(JSON.stringify({
+            type: 'BANS_RESET_SUCCESS',
+            message: 'Tüm banlar ve oda yasakları başarıyla sıfırlandı!'
+          }));
+          break;
+        }
+
         case 'ADMIN_UNBAN': {
           if (!clientInfo.isAdmin) return;
           const target = (msg.target || '').trim();

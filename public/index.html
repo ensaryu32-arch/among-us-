@@ -1337,6 +1337,12 @@
 
         <!-- Tab 3: Bans -->
         <div id="admin-tab-content-bans" class="admin-tab-view hidden" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 14px; color: #94a3b8; font-weight: 700;">Yasaklanmış Cihaz ve Kullanıcılar</span>
+            <button class="btn-ban-danger" onclick="window.adminResetAllBans()" style="padding: 8px 16px; font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <span>🗑️</span> <span>TÜM BANLARI SIFIRLA</span>
+            </button>
+          </div>
           <div class="admin-table-wrapper">
             <table class="admin-table">
               <thead>
