@@ -1212,9 +1212,7 @@
         <button id="auth-tab-register" class="auth-tab" onclick="window.switchAuthTab('register')">KAYIT OL</button>
       </div>
       <div class="auth-body">
-        <div id="auth-info-banner" class="auth-info-banner">
-          Yönetici Hesabı: <b>ensar</b> / <b>Ensarbaba44</b>
-        </div>
+
         <div id="auth-logged-in-box" class="auth-logged-in-box hidden" style="display: none;">
           <div class="auth-user-avatar">🧑‍🚀</div>
           <div class="auth-user-details">
@@ -1223,7 +1221,7 @@
           </div>
           <button class="auth-btn-secondary" onclick="window.logoutUser()" style="margin-top: 15px; width: 100%;">Çıkış Yap</button>
         </div>
-        <form id="auth-form" onsubmit="window.handleAuthSubmit(event)">
+        <form id="auth-form" onsubmit="window.handleAuthSubmit(event); return false;">
           <div class="auth-field">
             <label>Kullanıcı Adı</label>
             <input type="text" id="auth-username" placeholder="Kullanıcı adınız..." autocomplete="username" required maxlength="20">
@@ -1233,7 +1231,7 @@
             <input type="password" id="auth-password" placeholder="Şifreniz..." autocomplete="current-password" required minlength="4">
           </div>
           <div id="auth-error-msg" class="auth-error-msg hidden" style="display: none;"></div>
-          <button type="submit" id="btn-auth-submit" class="auth-submit-btn">GİRİŞ YAP</button>
+          <button type="button" id="btn-auth-submit" class="auth-submit-btn" onclick="window.handleAuthSubmit(event)">GİRİŞ YAP</button>
           <button type="button" class="auth-guest-btn" onclick="window.closeAuthModal()">Misafir Olarak Devam Et</button>
         </form>
       </div>

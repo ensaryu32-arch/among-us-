@@ -1277,14 +1277,13 @@
           }
         }
 
-        // Close modal after brief moment if user just logged in
-        setTimeout(() => {
-          const authModal = document.getElementById('auth-modal');
-          if (authModal && !authModal.classList.contains('hidden')) {
-            authModal.classList.add('hidden');
-            authModal.style.display = 'none';
-          }
-        }, 600);
+        const submitBtn = document.getElementById('btn-auth-submit');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = (currentAuthTab === 'register') ? 'KAYIT OL' : 'GİRİŞ YAP';
+        }
+        alert('✓ ' + (msg.message || 'Giriş başarılı!') + (isAdmin ? '\n\n👑 YÖNETİCİ MODU AKTİF!\nSağ üstte beliren "👑 ADMİN PANELİ" butonuna tıklayarak canlı paneli açabilirsiniz.' : ''));
+        window.closeAuthModal();
         break;
       }
 
@@ -1294,9 +1293,13 @@
           errEl.textContent = msg.message || 'Giriş hatası!';
           errEl.classList.remove('hidden');
           errEl.style.display = 'block';
-        } else {
-          alert(msg.message);
         }
+        const submitBtn = document.getElementById('btn-auth-submit');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = (currentAuthTab === 'register') ? 'KAYIT OL' : 'GİRİŞ YAP';
+        }
+        alert('GİRİŞ HATASI: ' + (msg.message || 'Kullanıcı adı veya şifre hatalı!'));
         break;
       }
 
@@ -6190,10 +6193,7 @@
     }
   });
 
-})();
-
-
-  // =========================================================================
+// =========================================================================
   // AUTHENTICATION & ADMIN DASHBOARD CLIENT FUNCTIONS
   // =========================================================================
 
@@ -6256,30 +6256,48 @@
   };
 
   window.handleAuthSubmit = function(e) {
-    if (e && e.preventDefault) e.preventDefault();
+    if (e) {
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+    }
     const uInput = document.getElementById('auth-username');
     const pInput = document.getElementById('auth-password');
     const username = uInput ? uInput.value.trim() : '';
     const password = pInput ? pInput.value.trim() : '';
 
+    const errEl = document.getElementById('auth-error-msg');
+    if (errEl) { errEl.classList.add('hidden'); errEl.style.display = 'none'; }
+
     if (!username || !password) {
-      alert('Kullanıcı adı ve şifre gereklidir!');
-      return;
+      const msg = 'Lütfen kullanıcı adı ve şifre alanlarını doldurun!';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+        errEl.style.display = 'block';
+      }
+      alert(msg);
+      return false;
     }
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      alert('Sunucuya bağlanılamadı. Lütfen birkaç saniye sonra tekrar deneyin.');
-      return;
+    const submitBtn = document.getElementById('btn-auth-submit');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Giriş Yapılıyor...';
+      setTimeout(() => {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = (currentAuthTab === 'register') ? 'KAYIT OL' : 'GİRİŞ YAP';
+        }
+      }, 3000);
     }
 
     // Save for auto login
     localStorage.setItem('amongus_auth_creds', JSON.stringify({ username, password }));
 
-    if (currentAuthTab === 'register') {
-      ws.send(JSON.stringify({ type: 'REGISTER', username, password }));
-    } else {
-      ws.send(JSON.stringify({ type: 'LOGIN', username, password }));
-    }
+    const reqType = (currentAuthTab === 'register') ? 'REGISTER' : 'LOGIN';
+    console.log('Sending auth request:', reqType, 'for user:', username);
+    safeSendWs({ type: reqType, username, password });
+    return false;
   };
 
   window.logoutUser = function() {
@@ -6671,3 +6689,5 @@
     players.clear();
     deadBodies = [];
   };
+
+})();
