@@ -362,6 +362,8 @@ function broadcastLobbyState(room) {
       y: p.y
     }))
   });
+  // Auto sync room players drawer in real time!
+  sendRoomPlayersUpdate(room);
 }
 
 function startGame(room) {

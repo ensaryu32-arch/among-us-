@@ -1568,6 +1568,15 @@
         const maxCap = msg.maxPlayers || currentRoomMaxPlayers || 20;
         currentRoomMaxPlayers = maxCap;
         if (dropshipPlayerCount) dropshipPlayerCount.innerText = msg.players.length + '/' + maxCap;
+
+        // Auto update room players drawer in real time when any player enters/leaves
+        currentRoomHostId = msg.hostId;
+        currentRoomPlayersData = msg.players || [];
+        const countSpan = document.getElementById('chat-tab-player-count');
+        if (countSpan) countSpan.textContent = currentRoomPlayersData.length;
+        if (window.renderRoomPlayersList) {
+          window.renderRoomPlayersList(currentRoomPlayersData, currentRoomHostId);
+        }
         if (msg.hostName && !isRoomHost && dropshipHostTag) {
           dropshipHostTag.innerHTML = 'HOST: <span style="color:#fbbf24;">' + msg.hostName + '</span>';
         }
@@ -6669,6 +6678,7 @@
   };
 
   // ================= ROOM HOST KICK / BAN CLIENT METHODS =================
+  let roomPlayersAutoRefreshTimer = null;
   window.switchChatDrawerTab = function(tab) {
     const btnChat = document.getElementById('tab-btn-chat');
     const btnPlayers = document.getElementById('tab-btn-players');
@@ -6680,14 +6690,31 @@
       if (btnPlayers) btnPlayers.classList.add('active');
       if (contentChat) { contentChat.classList.add('hidden'); contentChat.style.display = 'none'; }
       if (contentPlayers) { contentPlayers.classList.remove('hidden'); contentPlayers.style.display = 'block'; }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'GET_ROOM_PLAYERS' }));
-      }
+      
+      // Immediate fetch
+      safeSendWs({ type: 'GET_ROOM_PLAYERS' });
+
+      // Continuous live polling every 1.5s while drawer players tab is open
+      if (roomPlayersAutoRefreshTimer) clearInterval(roomPlayersAutoRefreshTimer);
+      roomPlayersAutoRefreshTimer = setInterval(() => {
+        const drawer = document.getElementById('meeting-chat-drawer');
+        const pView = document.getElementById('chat-tab-content-players');
+        if (drawer && !drawer.classList.contains('hidden') && pView && !pView.classList.contains('hidden')) {
+          safeSendWs({ type: 'GET_ROOM_PLAYERS' });
+        } else {
+          clearInterval(roomPlayersAutoRefreshTimer);
+          roomPlayersAutoRefreshTimer = null;
+        }
+      }, 1500);
     } else {
       if (btnChat) btnChat.classList.add('active');
       if (btnPlayers) btnPlayers.classList.remove('active');
       if (contentChat) { contentChat.classList.remove('hidden'); contentChat.style.display = 'block'; }
       if (contentPlayers) { contentPlayers.classList.add('hidden'); contentPlayers.style.display = 'none'; }
+      if (roomPlayersAutoRefreshTimer) {
+        clearInterval(roomPlayersAutoRefreshTimer);
+        roomPlayersAutoRefreshTimer = null;
+      }
     }
   };
 
