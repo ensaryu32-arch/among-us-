@@ -357,8 +357,85 @@
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(protocol + '//' + window.location.host);
 
-    ws.onopen = () => {
+      // ==================== SCHOOL-FRIENDLY DEVICE & FINGERPRINT ID ====================
+  function getPersistentDeviceId() {
+    let id = null;
+    try {
+      id = localStorage.getItem('amongus_device_uuid');
+      if (!id) {
+        const match = document.cookie.match(/amongus_device_uuid=([^;]+)/);
+        if (match) id = match[1];
+      }
+      if (!id) {
+        id = 'pc_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+        localStorage.setItem('amongus_device_uuid', id);
+        document.cookie = 'amongus_device_uuid=' + id + '; max-age=315360000; path=/; SameSite=Lax';
+      }
+    } catch(e) {
+      id = 'pc_fallback_' + Math.random().toString(36).substring(2, 9);
+    }
+    return id;
+  }
+
+  function getDeviceFingerprint() {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 200;
+      canvas.height = 40;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.textBaseline = 'top';
+        ctx.font = "14px 'Arial'";
+        ctx.fillStyle = '#f60';
+        ctx.fillRect(100, 1, 50, 20);
+        ctx.fillStyle = '#069';
+        ctx.fillText('AmongUs#School#FP', 2, 15);
+      }
+      const cData = canvas.toDataURL();
+
+      let glRenderer = '';
+      try {
+        const gl = document.createElement('canvas').getContext('webgl');
+        if (gl) {
+          const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+          if (dbg) glRenderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '';
+        }
+      } catch(e) {}
+
+      const raw = [
+        cData.slice(-40),
+        screen.width,
+        screen.height,
+        screen.colorDepth,
+        navigator.hardwareConcurrency || 4,
+        navigator.platform || '',
+        Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        glRenderer
+      ].join('###');
+
+      let hash = 0;
+      for (let i = 0; i < raw.length; i++) {
+        hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+        hash |= 0;
+      }
+      const shortGpu = glRenderer ? '_' + glRenderer.replace(/[^a-zA-Z0-9]/g, '').slice(-8) : '';
+      return 'fp_' + Math.abs(hash).toString(36) + shortGpu;
+    } catch(e) {
+      return 'fp_basic_' + screen.width + 'x' + screen.height;
+    }
+  }
+  // ==================================================================================
+
+      ws.onopen = () => {
       console.log('Connected to Among Us Server');
+      // Send device identification so bans only affect the specific PC in school lab!
+      try {
+        ws.send(JSON.stringify({
+          type: 'CLIENT_IDENTIFY',
+          deviceId: getPersistentDeviceId(),
+          fingerprint: getDeviceFingerprint()
+        }));
+      } catch(e) {}
 
       // Auto login if credentials exist in localStorage
       const savedAuth = localStorage.getItem('amongus_auth_creds');
@@ -6408,7 +6485,7 @@
               <div style="display:flex; gap:4px;">
                 ${!p.isDummy ? `
                   <button class="btn-kick-warning" onclick="window.adminKickPlayer('${p.connId || p.id}')" title="Odadan At">👢 At</button>
-                  <button class="btn-ban-danger" onclick="window.adminBanPlayer('${p.ip}', '${p.username || p.name}')" title="IP / Kullanıcı Banla">🚫 Banla</button>
+                  <button class="btn-ban-danger" onclick="window.adminBanPlayer('${p.connId || p.id}', '${p.username || p.name}', '${p.ip}', '${p.deviceId || ''}', '${p.fingerprint || ''}')" title="Bu Bilgisayarı/Cihazı Banla (Okul Ağı Bozulmaz)">🚫 PC'yi Banla</button>
                 ` : ''}
               </div>
             </div>
@@ -6468,7 +6545,7 @@
         <td>
           <div style="display:flex; gap:6px;">
             <button class="btn-kick-warning" onclick="window.adminKickPlayer('${c.connId}')">👢 At</button>
-            <button class="btn-ban-danger" onclick="window.adminBanPlayer('${c.ip}', '${c.username || ''}')">🚫 Banla</button>
+            <button class="btn-ban-danger" onclick="window.adminBanPlayer('${c.connId}', '${c.username || ''}', '${c.ip}', '${c.deviceId || ''}', '${c.fingerprint || ''}')" title="Bu Bilgisayarı/Cihazı Banla">🚫 PC'yi Banla</button>
           </div>
         </td>
       `;
@@ -6488,9 +6565,12 @@
 
     bans.forEach(b => {
       const tr = document.createElement('tr');
-      const targetStr = (b.ip && b.ip !== '-') ? b.ip : b.username;
+      const targetStr = b.target || (b.deviceId && b.deviceId !== '-' ? b.deviceId : b.username);
+      const typeBadge = b.type ? `<span style="background:rgba(225,29,72,0.2); color:#fca5a5; border:1px solid rgba(225,29,72,0.4); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:800; margin-right:8px;">${escapeHtml(b.type)}</span>` : '';
+
       tr.innerHTML = `
         <td>
+          ${typeBadge}
           <b style="color:#ef4444;">${escapeHtml(targetStr || '-')}</b>
           ${b.username && b.username !== '-' ? `<span style="color:#94a3b8; font-size:11px; margin-left:6px;">(@${escapeHtml(b.username)})</span>` : ''}
         </td>
@@ -6498,7 +6578,7 @@
         <td><span style="color:#fbbf24;">${escapeHtml(b.bannedBy || 'ensar')}</span></td>
         <td style="color:#94a3b8; font-size:12px;">${escapeHtml(b.date || '-')}</td>
         <td>
-          <button class="btn-unban-success" onclick="window.adminUnban('${targetStr}')">✅ Banı Kaldır</button>
+          <button class="btn-unban-success" onclick="window.adminUnban('${escapeHtml(targetStr)}')">✅ Banı Kaldır</button>
         </td>
       `;
       tbody.appendChild(tr);
@@ -6513,15 +6593,18 @@
     }
   };
 
-  window.adminBanPlayer = function(ip, username) {
+  window.adminBanPlayer = function(targetConnId, username, ip, deviceId, fingerprint) {
     if (!isAdmin) return;
-    const reason = prompt('Yasaklama (Ban) sebebini girin:', 'Kurallara uymama / Hile / Küfür');
+    const reason = prompt('Yasaklama (Ban) sebebini girin:\n(DİKKAT: Bu işlem okul internetini bozmaz, SADECE bu bilgisayarı kalıcı olarak yasaklar)', 'Kurallara uymama / Trol / Hile');
     if (reason === null) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'ADMIN_BAN_PLAYER',
-        ip: ip || '',
+        connId: targetConnId || '',
         username: username || '',
+        ip: ip || '',
+        deviceId: deviceId || '',
+        fingerprint: fingerprint || '',
         reason: reason
       }));
     }

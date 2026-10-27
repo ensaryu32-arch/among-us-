@@ -127,6 +127,8 @@ function loadBans() {
       if (data && typeof data === 'object') {
         if (!Array.isArray(data.bannedIps)) data.bannedIps = [];
         if (!Array.isArray(data.bannedUsers)) data.bannedUsers = [];
+        if (!Array.isArray(data.bannedDevices)) data.bannedDevices = [];
+        if (!Array.isArray(data.bannedFingerprints)) data.bannedFingerprints = [];
         if (!Array.isArray(data.bannedRecords)) data.bannedRecords = [];
         return data;
       }
@@ -137,6 +139,8 @@ function loadBans() {
   const defaultBans = {
     bannedIps: [],
     bannedUsers: [],
+    bannedDevices: [],
+    bannedFingerprints: [],
     bannedRecords: []
   };
   saveBans(defaultBans);
@@ -151,10 +155,14 @@ function saveBans(data) {
   }
 }
 
-function isBanned(ip, username = null) {
+function isBanned(ip = null, username = null, deviceId = null, fingerprint = null) {
   const bans = loadBans();
-  if (ip && bans.bannedIps.includes(ip)) return true;
-  if (username && bans.bannedUsers.includes(username.toLowerCase())) return true;
+  // Hardware and persistent device ID checks (Solves the school shared-IP lab issue!)
+  if (deviceId && bans.bannedDevices && bans.bannedDevices.includes(deviceId)) return true;
+  if (fingerprint && bans.bannedFingerprints && bans.bannedFingerprints.includes(fingerprint)) return true;
+  if (username && bans.bannedUsers && bans.bannedUsers.includes(username.toLowerCase())) return true;
+  // Only check IP if explicitly placed in bannedIps (disabled for school compatibility)
+  if (ip && bans.bannedIps && bans.bannedIps.includes(ip)) return true;
   return false;
 }
 
@@ -224,6 +232,8 @@ function broadcastAdminStats() {
         isImpostor: !!p.isImpostor,
         isDummy: !!p.isDummy,
         ip: p.ip || '127.0.0.1',
+        deviceId: p.deviceId || null,
+        fingerprint: p.fingerprint || null,
         username: p.registeredUsername || null,
         connId: p.connId || null
       }))
@@ -235,6 +245,8 @@ function broadcastAdminStats() {
     clientsList.push({
       connId: c.connId,
       ip: c.ip,
+      deviceId: c.deviceId || null,
+      fingerprint: c.fingerprint || null,
       username: c.user ? c.user.username : null,
       isRegistered: !!c.user,
       isAdmin: !!c.isAdmin,
@@ -656,10 +668,12 @@ wss.on('connection', (ws, req) => {
   const clientIp = getClientIp(ws, req);
   const connId = 'c_' + Math.random().toString(36).substring(2, 9);
 
-  if (isBanned(clientIp)) {
+  // Only check if explicit IP ban exists; school IPs are preserved
+  const currentBans = loadBans();
+  if (currentBans.bannedIps && currentBans.bannedIps.includes(clientIp)) {
     ws.send(JSON.stringify({
       type: 'BANNED',
-      reason: 'Bu sunucudan IP adresiniz üzerinden kalıcı olarak yasaklandınız!'
+      reason: 'Bu IP adresi yönetici tarafından yasaklanmıştır!'
     }));
     try { ws.close(); } catch(e) {}
     return;
@@ -669,6 +683,8 @@ wss.on('connection', (ws, req) => {
     ws,
     connId,
     ip: clientIp,
+    deviceId: null,
+    fingerprint: null,
     user: null,
     isAdmin: false,
     player: null,
@@ -717,6 +733,8 @@ wss.on('connection', (ws, req) => {
           currentRoom.hostId = currentPlayer.id;
           currentPlayer.connId = clientInfo.connId;
           currentPlayer.ip = clientInfo.ip;
+          currentPlayer.deviceId = clientInfo.deviceId;
+          currentPlayer.fingerprint = clientInfo.fingerprint;
           currentPlayer.registeredUsername = clientInfo.user ? clientInfo.user.username : null;
           clientInfo.player = currentPlayer;
           clientInfo.room = currentRoom;
@@ -784,6 +802,8 @@ wss.on('connection', (ws, req) => {
 
           currentPlayer.connId = clientInfo.connId;
           currentPlayer.ip = clientInfo.ip;
+          currentPlayer.deviceId = clientInfo.deviceId;
+          currentPlayer.fingerprint = clientInfo.fingerprint;
           currentPlayer.registeredUsername = clientInfo.user ? clientInfo.user.username : null;
           clientInfo.player = currentPlayer;
           clientInfo.room = currentRoom;
@@ -863,6 +883,8 @@ wss.on('connection', (ws, req) => {
           currentRoom.hostId = currentPlayer.id;
           currentPlayer.connId = clientInfo.connId;
           currentPlayer.ip = clientInfo.ip;
+          currentPlayer.deviceId = clientInfo.deviceId;
+          currentPlayer.fingerprint = clientInfo.fingerprint;
           currentPlayer.registeredUsername = clientInfo.user ? clientInfo.user.username : null;
           clientInfo.player = currentPlayer;
           clientInfo.room = currentRoom;
@@ -1418,37 +1440,76 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
+        case 'CLIENT_IDENTIFY': {
+          clientInfo.deviceId = msg.deviceId || clientInfo.deviceId;
+          clientInfo.fingerprint = msg.fingerprint || clientInfo.fingerprint;
+          if (isBanned(clientInfo.ip, clientInfo.user?.username, clientInfo.deviceId, clientInfo.fingerprint)) {
+            ws.send(JSON.stringify({
+              type: 'BANNED',
+              reason: 'Bu bilgisayar / cihaz yönetici tarafından kalıcı olarak yasaklanmıştır! (Okul ağı korunmaktadır)'
+            }));
+            try { ws.close(); } catch(e) {}
+            return;
+          }
+          break;
+        }
+
         case 'ADMIN_BAN_PLAYER': {
           if (!clientInfo.isAdmin) return;
-          const targetIp = (msg.ip || '').trim();
-          const targetUsername = (msg.username || '').trim().toLowerCase();
           const targetConnId = msg.connId;
+          const targetUsername = (msg.username || '').trim().toLowerCase();
+          let targetDeviceId = (msg.deviceId || '').trim();
+          let targetFingerprint = (msg.fingerprint || '').trim();
+          const banIpToo = !!msg.banIp;
+          const targetIp = (msg.ip || '').trim();
           const reason = msg.reason || 'Yönetici tarafından yasaklandı';
 
-          const bansData = loadBans();
+          // Auto-detect deviceId and fingerprint from connected socket
+          for (const [s, c] of connectedSockets) {
+            if (c.connId === targetConnId || (c.player && c.player.id === targetConnId) || (c.user && c.user.username.toLowerCase() === targetUsername)) {
+              if (c.deviceId) targetDeviceId = c.deviceId;
+              if (c.fingerprint) targetFingerprint = c.fingerprint;
+              break;
+            }
+          }
 
-          if (targetIp && !bansData.bannedIps.includes(targetIp)) {
-            bansData.bannedIps.push(targetIp);
+          const bansData = loadBans();
+          if (targetDeviceId && !bansData.bannedDevices.includes(targetDeviceId)) {
+            bansData.bannedDevices.push(targetDeviceId);
+          }
+          if (targetFingerprint && !bansData.bannedFingerprints.includes(targetFingerprint)) {
+            bansData.bannedFingerprints.push(targetFingerprint);
           }
           if (targetUsername && !bansData.bannedUsers.includes(targetUsername)) {
             bansData.bannedUsers.push(targetUsername);
           }
+          if (banIpToo && targetIp && !bansData.bannedIps.includes(targetIp)) {
+            bansData.bannedIps.push(targetIp);
+          }
+
+          const primaryTarget = targetDeviceId || targetFingerprint || targetUsername || targetIp;
 
           bansData.bannedRecords.push({
-            ip: targetIp || '-',
+            target: primaryTarget,
+            deviceId: targetDeviceId || '-',
+            fingerprint: targetFingerprint || '-',
             username: targetUsername || '-',
+            ip: banIpToo ? targetIp : 'Muaf (Okul Ağı)',
+            type: targetDeviceId ? 'CİHAZ / BİLGİSAYAR' : (targetUsername ? 'KULLANICI' : 'IP'),
             reason: reason,
             bannedBy: 'ensar',
             date: new Date().toLocaleString('tr-TR')
           });
           saveBans(bansData);
 
+          // Disconnect ONLY that specific banned computer/user!
           for (const [s, c] of connectedSockets) {
-            const matchIp = targetIp && c.ip === targetIp;
+            const matchConn = targetConnId && (c.connId === targetConnId || (c.player && c.player.id === targetConnId));
+            const matchDev = targetDeviceId && c.deviceId === targetDeviceId;
+            const matchFp = targetFingerprint && c.fingerprint === targetFingerprint;
             const matchUser = targetUsername && c.user && c.user.username.toLowerCase() === targetUsername;
-            const matchConn = targetConnId && c.connId === targetConnId;
 
-            if (matchIp || matchUser || matchConn) {
+            if (matchConn || matchDev || matchFp || matchUser) {
               if (c.room && c.player) {
                 c.room.players.delete(c.player.id);
                 broadcastLobbyState(c.room);
@@ -1457,7 +1518,7 @@ wss.on('connection', (ws, req) => {
               if (s.readyState === WebSocket.OPEN) {
                 s.send(JSON.stringify({
                   type: 'BANNED',
-                  reason: 'Yönetici (Admin) tarafından siteden kalıcı olarak yasaklandınız!'
+                  reason: 'Bu bilgisayar / cihaz yönetici tarafından kalıcı olarak yasaklanmıştır!\n(Okul ağındaki diğer bilgisayarlar etkilenmez)'
                 }));
                 try { s.close(); } catch(e) {}
               }
@@ -1474,9 +1535,13 @@ wss.on('connection', (ws, req) => {
           const target = (msg.target || '').trim();
           const bansData = loadBans();
 
-          bansData.bannedIps = bansData.bannedIps.filter(ip => ip !== target);
+          bansData.bannedDevices = bansData.bannedDevices.filter(d => d !== target);
+          bansData.bannedFingerprints = bansData.bannedFingerprints.filter(fp => fp !== target);
           bansData.bannedUsers = bansData.bannedUsers.filter(u => u !== target.toLowerCase());
-          bansData.bannedRecords = bansData.bannedRecords.filter(r => r.ip !== target && r.username.toLowerCase() !== target.toLowerCase());
+          bansData.bannedIps = bansData.bannedIps.filter(ip => ip !== target);
+          bansData.bannedRecords = bansData.bannedRecords.filter(r => 
+            r.target !== target && r.deviceId !== target && r.fingerprint !== target && r.username.toLowerCase() !== target.toLowerCase() && r.ip !== target
+          );
           saveBans(bansData);
 
           broadcastAdminStats();
